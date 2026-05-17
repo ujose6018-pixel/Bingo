@@ -328,7 +328,7 @@
 
     // --- CUSTOM HOOKS ---
 
-    const useBingoData = (user) => {
+    const useBingoData = (user, currentSlug) => {
       const [events, setEvents] = useState([]);
       const [cards, setCards] = useState([]);
       const [loading, setLoading] = useState(true);
@@ -352,8 +352,12 @@
       }, [user]);
 
       const activeEvent = useMemo(() => {
+        if (currentSlug) {
+          const found = events.find(e => e.slug === currentSlug);
+          if (found) return found;
+        }
         return events.find(e => e.status === 'active') || events.sort((a,b) => b.createdAt - a.createdAt)[0];
-      }, [events]);
+      }, [events, currentSlug]);
 
       const drawnNumbersSet = useMemo(() => new Set(activeEvent?.drawnNumbers || []), [activeEvent?.drawnNumbers]);
 
@@ -1101,8 +1105,15 @@
     function App() {
       const { type, eventSlug, navigate, getCleanBaseUrl } = useRouting();
       const { user, userRole, loading: authLoading } = useAuthManager();
-      const { events, cards, activeEvent, loading: dataLoading } = useBingoData(user);
+      const { events, cards, activeEvent, drawnNumbersSet, loading: dataLoading } = useBingoData(user, eventSlug);
       const [isLocalFile, setIsLocalFile] = useState(window.location.protocol === 'file:');
+
+      // REDIRECCIÓN AUTOMÁTICA: Si el usuario entra a la raíz y hay un evento activo, llevarlo allí
+      useEffect(() => {
+        if (type === 'home' && activeEvent && activeEvent.status === 'active' && !dataLoading) {
+          navigate('/' + activeEvent.slug);
+        }
+      }, [type, activeEvent, dataLoading, navigate]);
 
       // Actions (Memoized for performance)
       const handleSystemLogin = useCallback(async (username, password) => {
