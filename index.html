@@ -420,23 +420,15 @@
                         
                         ${matrix.map((row, rIdx) => row.map((cell, cIdx) => {
                           const isFree = cell === 'FREE';
-                          // FIX: Comparación numérica robusta
-                          const cellNum = isFree ? null : Number(cell);
-                          const isDrawn = isFree || (cellNum && activeEvent.drawnNumbers.includes(cellNum));
+                          // SENIOR FIX: Marcado libre total solicitado por el usuario
                           const isMarked = markTimes[cell] || isFree;
                           
                           const toggleMark = async () => {
-                            if (!isDrawn) {
-                              const letter = ['B','I','N','G','O'][cIdx];
-                              VoiceService.speak(`El ${letter} ${cell} no ha salido`, 1);
-                              return;
-                            }
-                            
+                            // Habilitar marcado de TODOS los números sin restricción de tómbola
                             const newMarkTimes = { ...markTimes };
                             if (newMarkTimes[cell]) delete newMarkTimes[cell];
                             else newMarkTimes[cell] = Date.now();
 
-                            // Sincronización senior sin manipulación manual de clases
                             await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', card.id), {
                               markTimes: JSON.stringify(newMarkTimes)
                             });
@@ -444,15 +436,19 @@
                             if (!isMarked) VoiceService.playSuccess();
                           };
 
+                          // Visualmente seguimos destacando si el número ha salido en la tómbola para ayudar al jugador
+                          const cellNum = isFree ? null : Number(cell);
+                          const isDrawnInTombola = isFree || (cellNum && activeEvent.drawnNumbers.includes(cellNum));
+
                           return html`
                             <div 
                               onClick=${toggleMark} 
                               class="bingo-cell cursor-pointer text-xl sm:text-4xl border-2 transition-all duration-300 transform active:scale-90
                                 ${isMarked ? 
                                   'bg-amber-500 text-deep-bg border-amber-300 shadow-[0_0_30px_rgba(212,175,55,0.4)] rotate-3' : 
-                                  isDrawn ? 
+                                  isDrawnInTombola ? 
                                     'bg-amber-500/10 text-amber-500 border-amber-500/30 animate-pulse' : 
-                                    'bg-white/5 text-slate-700 border-white/5 hover:border-white/20'}"
+                                    'bg-white/5 text-slate-300 border-white/5 hover:border-white/20'}"
                             >
                               ${isFree ? '★' : cell}
                             </div>
@@ -1024,37 +1020,40 @@
 
       useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (u) => {
-          if (!u) {
-            await signInAnonymously(auth);
-          } else {
-            setUser(u);
-            
-            // SENIOR BYPASS CHECK
-            if (localStorage.getItem('royale_admin_bypass') === 'true') {
-              setUserRole(ROLES.ADMIN);
-              setLoading(false);
-              return;
-            }
-
-            const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
-            const uSnap = await getDoc(doc(usersRef, u.uid));
-            
-            if (uSnap.exists()) {
-              setUserRole(uSnap.data().role);
-            } else if (u.email && u.email.endsWith(SYSTEM_DOMAIN)) {
-              // Buscar en la colección de staff por UID vinculado
-              const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
-              if (!staffSnap.empty) {
-                const role = staffSnap.docs[0].data().role || ROLES.STAFF;
-                setUserRole(role);
-              } else {
-                // Caso especial para el admin de emergencia si no está en la colección pero tiene el email
-                if (u.email === `admin${SYSTEM_DOMAIN}`) setUserRole(ROLES.ADMIN);
-                else setUserRole(ROLES.PLAYER);
-              }
+          try {
+            if (!u) {
+              await signInAnonymously(auth);
             } else {
-              setUserRole(ROLES.PLAYER);
+              setUser(u);
+              
+              // SENIOR BYPASS CHECK
+              if (localStorage.getItem('royale_admin_bypass') === 'true') {
+                setUserRole(ROLES.ADMIN);
+                return;
+              }
+
+              const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
+              const uSnap = await getDoc(doc(usersRef, u.uid));
+              
+              if (uSnap.exists()) {
+                setUserRole(uSnap.data().role);
+              } else if (u.email && u.email.endsWith(SYSTEM_DOMAIN)) {
+                // Buscar en la colección de staff por UID vinculado
+                const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
+                if (!staffSnap.empty) {
+                  const role = staffSnap.docs[0].data().role || ROLES.STAFF;
+                  setUserRole(role);
+                } else {
+                  if (u.email === `admin${SYSTEM_DOMAIN}`) setUserRole(ROLES.ADMIN);
+                  else setUserRole(ROLES.PLAYER);
+                }
+              } else {
+                setUserRole(ROLES.PLAYER);
+              }
             }
+          } catch (error) {
+            console.error("Auth System Error:", error);
+          } finally {
             setLoading(false);
           }
         });
@@ -1268,37 +1267,7 @@
         return { success: true, msg: '¡Acceso Concedido!' };
       };
 
-      const handleGenerateChangeCode = async () => {
-        const code = Math.floor(100000 + Math.random() * 900000).toString();
-        if (activeEvent) {
-          try {
-            const eventRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id);
-            const eventSnap = await getDoc(eventRef);
-            let currentCodes = [];
-            
-            if (eventSnap.exists()) {
-              const data = eventSnap.data();
-              if (data.tempChangeCodes) {
-                try {
-                  currentCodes = JSON.parse(data.tempChangeCodes);
-                  if (!Array.isArray(currentCodes)) currentCodes = [];
-                } catch (e) { currentCodes = []; }
-              }
-            }
-
-            const newCodes = [...currentCodes, { code, createdAt: Date.now() }];
-            await updateDoc(eventRef, {
-              tempChangeCodes: JSON.stringify(newCodes)
-            });
-            console.log("Código generado y guardado:", code);
-            return code;
-          } catch (error) {
-            console.error("Error al generar código:", error);
-            return null;
-          }
-        }
-        return null;
-      };
+      const MASTER_CHANGE_CODE = '202620';
 
       const handleRequestChange = async (cardId, code) => {
           if (!activeEvent) return false;
@@ -1306,32 +1275,13 @@
           if (!cleanCode) return false;
           
           try {
-            // SENIOR FIX: Obtener documento fresco de Firestore para evitar estados de cierre (stale state)
-            const eventRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id);
-            const eventSnap = await getDoc(eventRef);
-            
-            if (eventSnap.exists()) {
-              const latestData = eventSnap.data();
-              if (latestData.tempChangeCodes) {
-                let tempCodes = [];
-                try {
-                  tempCodes = JSON.parse(latestData.tempChangeCodes);
-                } catch (e) { tempCodes = []; }
-
-                const foundIdx = tempCodes.findIndex(c => c.code.toString().trim() === cleanCode);
-                
-                if (foundIdx !== -1) {
-                  const newCodes = tempCodes.filter((_, i) => i !== foundIdx);
-                  await updateDoc(eventRef, {
-                    tempChangeCodes: JSON.stringify(newCodes)
-                  });
-                  // Liberar cartón actual
-                  await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
-                  // Marcar al usuario como "pre-autorizado" para el cambio (sin QR)
-                  await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
-                  return true;
-                }
-              }
+            // SENIOR FIX: Verificar código maestro genérico '202620'
+            if (cleanCode === MASTER_CHANGE_CODE) {
+              // Liberar cartón actual
+              await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+              // Marcar al usuario como "pre-autorizado" para el cambio (sin QR)
+              await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
+              return true;
             }
 
             // Fallback: Verificar códigos de Staff permanentes (en la colección staff)
@@ -1339,7 +1289,6 @@
             const s = await getDocs(staffQuery);
             if(!s.empty) { 
               await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
-              // También pre-autorizar con código de staff permanente
               await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
               return true; 
             }
@@ -1347,7 +1296,7 @@
             console.error("Error en solicitud de cambio:", error);
           }
           
-          alert('Código Inválido o Expirado. Pide al Staff que genere un nuevo código de cambio.');
+          alert('Código Inválido. Usa el código de liberación oficial (202620).');
           return false;
         };
 
@@ -1445,24 +1394,40 @@
                 <${ScannerView} 
                   user=${user} 
                   onActivateCard=${handleActivateCard} 
-                  onGenerateChangeCode=${handleGenerateChangeCode}
                 />
               </div>
             `
           ) : null}
-          ${(type === 'player' || type === 'home') ? (
-            (!activeEvent || type === 'home') ? html`
+          ${type === 'home' ? html`
               <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-8 bg-black">
                 <div class="space-y-4">
                   <h1 class="bingo-title text-6xl italic">ROYALE ACCESS</h1>
                   <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
                   <p class="text-amber-500 font-black text-xs uppercase tracking-[0.4em] max-w-xs mx-auto leading-relaxed">
-                    Ingresa con el URL del evento para acceder a la mesa de juego privada.
+                    Acceso exclusivo mediante invitación. Por favor, ingresa con el enlace proporcionado por el organizador.
                   </p>
                 </div>
                 <div class="glass-card p-8 rounded-[2rem] border-rose-500/20">
                   <span class="text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
-                    <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Acceso Restringido
+                    <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Entrada Privada
+                  </span>
+                </div>
+              </div>
+          ` : null}
+
+          ${type === 'player' ? (
+            (!activeEvent || activeEvent.slug !== eventSlug) ? html`
+              <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-8 bg-black">
+                <div class="space-y-4">
+                  <h1 class="bingo-title text-6xl italic">ROYALE ACCESS</h1>
+                  <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
+                  <p class="text-amber-500 font-black text-xs uppercase tracking-[0.4em] max-w-xs mx-auto leading-relaxed">
+                    El enlace de invitación es inválido, ha expirado o la gala ya ha concluido.
+                  </p>
+                </div>
+                <div class="glass-card p-8 rounded-[2rem] border-rose-500/20">
+                  <span class="text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Invitación Inválida
                   </span>
                 </div>
               </div>
@@ -1955,12 +1920,12 @@
       `;
     }
 
-    function ScannerView({ user, onActivateCard, onGenerateChangeCode }) {
+    function ScannerView({ user, onActivateCard }) {
       const [log, setLog] = useState({ text: 'INICIALIZANDO CÁMARA...', type: 'info' });
       const [history, setHistory] = useState([]);
       const [myStaffData, setMyStaffData] = useState(null);
-      const [tempCode, setTempCode] = useState(null);
       const scannerRef = useRef(null);
+      const MASTER_CHANGE_CODE = '202620';
 
       useEffect(() => {
         if (!user?.uid) return;
@@ -2021,12 +1986,6 @@
         };
       }, [onActivateCard]);
 
-      const generateCode = async () => {
-        const code = await onGenerateChangeCode();
-        setTempCode(code);
-        setTimeout(() => setTempCode(null), 60000); // El código expira visualmente en 1 min
-      };
-
       return html`
         <div class="min-h-screen bg-[#05070a] pt-24 pb-20">
           <div class="max-w-2xl mx-auto px-6 space-y-8 fade-up">
@@ -2041,31 +2000,21 @@
                 <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Operador Royale</p>
                 <h3 class="text-3xl font-black tracking-tight">${myStaffData?.username?.toUpperCase() || 'COLABORADOR'}</h3>
               </div>
-              <div class="bg-black/20 px-4 py-2 rounded-xl border border-black/10">
-                <p class="text-[8px] font-black uppercase">Estatus</p>
-                <p class="text-xs font-black">EN LÍNEA</p>
+              <div class="bg-black/20 px-4 py-2 rounded-xl border border-black/10 text-center">
+                <p class="text-[8px] font-black uppercase">Código Cambio</p>
+                <p class="text-lg font-black tracking-widest text-white">${MASTER_CHANGE_CODE}</p>
               </div>
             </div>
 
             <!-- CAMBIO DE CARTÓN SECTION -->
-            <div class="glass-card p-8 rounded-[2.5rem] border-indigo-500/20 space-y-6">
-              <div class="flex justify-between items-center">
-                <div class="space-y-1">
-                  <h4 class="text-white font-black text-lg uppercase tracking-tighter italic">Cambio de Cartón</h4>
-                  <p class="text-slate-500 text-[8px] font-black uppercase tracking-widest">Liberación de Mesa para Jugador</p>
+            <div class="glass-card p-8 rounded-[2.5rem] border-indigo-500/20 space-y-4">
+              <div class="text-center space-y-2">
+                <h4 class="text-indigo-400 font-black text-xs uppercase tracking-[0.3em]">Protocolo Cambio de Cartón</h4>
+                <div class="p-6 bg-indigo-500/10 border border-indigo-500/30 rounded-3xl">
+                  <p class="text-5xl font-black text-white tracking-[0.2em] italic">${MASTER_CHANGE_CODE}</p>
+                  <p class="text-slate-500 text-[8px] font-black uppercase tracking-widest mt-2">Entrega este código al jugador para liberar su mesa</p>
                 </div>
-                <button onClick=${generateCode} class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
-                  Generar Código
-                </button>
               </div>
-
-              ${tempCode && html`
-                <div class="bg-indigo-500/10 border border-indigo-500/30 p-6 rounded-2xl text-center space-y-2 animate-in slide-in-from-top duration-300">
-                  <p class="text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em]">Código de Uso Único</p>
-                  <p class="text-5xl font-black text-white tracking-[0.2em] italic">${tempCode}</p>
-                  <p class="text-indigo-400/60 text-[8px] font-black uppercase">Expira en 60 segundos</p>
-                </div>
-              `}
             </div>
 
             <!-- SCANNER SECTION -->
