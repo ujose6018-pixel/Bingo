@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎲</text></svg>">
   <title>Bingo Premium Pro - Sistema de Eventos en Tiempo Real</title>
   
   <!-- Optimización Senior: Carga de Tailwind con configuración para evitar advertencias de desarrollo -->
@@ -77,7 +78,7 @@
     // Firebase Modular SDK v11
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     // Vincular HTM a React
     const html = htm.bind(React.createElement);
@@ -96,12 +97,21 @@
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // Namespaces de colecciones escalables (RESTORED)
-    const APP_NAMESPACE = 'app_bingo_enterprise_v2';
+    // --- DOMINIO DE SEGURIDAD Y ROLES ---
+    const ROLES = {
+      SUPER_ADMIN: 'super_admin',
+      COLLABORATOR: 'collaborator',
+      PLAYER: 'player'
+    };
+
+    // Namespaces de colecciones escalables
+    const APP_NAMESPACE = 'app_bingo_enterprise_v3';
     const PATH_EVENTS = 'eventos';
     const PATH_CARDS = 'cartones';
+    const PATH_USERS = 'usuarios';
+    const PATH_COLLABS = 'colaboradores';
 
-    // --- SERVICIO DE VOZ (TEXT-TO-SPEECH DOMAIN) (RESTORED) ---
+    // --- SERVICIO DE VOZ ---
     const VoiceService = {
       speak: (text) => {
         if ('speechSynthesis' in window) {
@@ -115,8 +125,11 @@
       }
     };
 
-    // --- DOMINIO DE LÓGICA DE JUEGO (BINGO UTILS) (RESTORED) ---
+    // --- DOMINIO DE LÓGICA DE JUEGO (BINGO UTILS) ---
     const BingoEngine = {
+      generateUniqueCode: (length = 6) => {
+        return Math.random().toString(36).substring(2, 2 + length).toUpperCase();
+      },
       generateCard: () => {
         const getUniqueColumn = (min, max) => {
           const set = new Set();
@@ -185,6 +198,7 @@
     // --- COMPONENTE PRINCIPAL ---
     function App() {
       const [user, setUser] = useState(null);
+      const [userRole, setUserRole] = useState(ROLES.PLAYER);
       const [authError, setAuthError] = useState(null);
       const [view, setView] = useState('home'); 
       const [events, setEvents] = useState([]);
@@ -193,7 +207,7 @@
 
       // Auth Initialization con Manejo Senior de Errores
       useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
           if (!currentUser) {
             signInAnonymously(auth).catch(err => {
               console.error("Critical Auth Error:", err.code);
@@ -203,6 +217,21 @@
           } else {
             setAuthError(null);
             setUser(currentUser);
+            
+            // Cargar Rol del Usuario
+            const userRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS, currentUser.uid);
+            const userSnap = await getDoc(userRef);
+            
+            if (userSnap.exists()) {
+              setUserRole(userSnap.data().role);
+            } else {
+              // Si es el primer usuario en entrar (Super Admin por defecto para desarrollo o Player)
+              // En un entorno real, esto se manejaría con una invitación o regla específica.
+              const usersSnap = await getDocs(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS));
+              const role = usersSnap.empty ? ROLES.SUPER_ADMIN : ROLES.PLAYER;
+              await setDoc(userRef, { role, createdAt: Date.now() });
+              setUserRole(role);
+            }
           }
         });
         return () => unsubscribe();
@@ -237,17 +266,41 @@
       const myCards = useMemo(() => cards.filter(c => c.userId === user?.uid), [cards, user]);
 
       // Acciones de Administrador (Eventos asíncronos transaccionales)
-      const handleCreateEvent = async () => {
-        if (!user) return;
-        const newRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS));
-        await setDoc(newRef, {
-          name: `Evento de Gala Bingo - ${new Date().toLocaleDateString()}`,
+      const handleCreateEvent = async (name, totalCards) => {
+        if (!user || userRole !== ROLES.SUPER_ADMIN) return;
+        
+        const batch = writeBatch(db);
+        const eventRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS));
+        
+        const eventData = {
+          name,
+          totalCards: parseInt(totalCards),
           status: 'active',
           pattern: 'full',
           drawnNumbers: [],
           createdAt: Date.now(),
           adminId: user.uid
-        });
+        };
+        
+        batch.set(eventRef, eventData);
+        
+        // Pre-generar Cartones Únicos
+        for (let i = 0; i < totalCards; i++) {
+          const cardRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS));
+          const matrix = BingoEngine.generateCard();
+          batch.set(cardRef, {
+            eventId: eventRef.id,
+            cardNumber: i + 1,
+            numbers: JSON.stringify(matrix),
+            status: 'available', // available, reserved, active
+            playerId: null,
+            playerName: null,
+            authBy: null,
+            createdAt: Date.now()
+          });
+        }
+        
+        await batch.commit();
       };
 
       const handleDrawNumber = async () => {
@@ -273,29 +326,66 @@
         await updateDoc(ref, { drawnNumbers: [] });
       };
 
-      const handleBuyCard = async (name) => {
+      const handleReserveCard = async (cardId, playerName) => {
         if (!user || !activeEvent) return;
-        const newRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS));
-        const matrix = BingoEngine.generateCard();
-        await setDoc(newRef, {
-          eventId: activeEvent.id,
-          userId: user.uid,
-          playerName: name,
-          numbers: JSON.stringify(matrix),
-          status: 'pending',
-          createdAt: Date.now()
+        
+        const cardRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
+        const cardSnap = await getDoc(cardRef);
+        
+        if (!cardSnap.exists() || cardSnap.data().status !== 'available') {
+          alert('Este cartón ya no está disponible.');
+          return;
+        }
+
+        await updateDoc(cardRef, {
+          status: 'reserved',
+          playerId: user.uid,
+          playerName: playerName,
+          reservedAt: Date.now()
         });
+      };
+
+      const handleRequestChange = async (cardId, changeCode) => {
+        // Verificar código de colaborador
+        const collabsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS);
+        const q = query(collabsRef, where('changeCode', '==', changeCode.toUpperCase()));
+        const snap = await getDocs(q);
+        
+        if (snap.empty) {
+          alert('Código de colaborador inválido.');
+          return false;
+        }
+
+        const batch = writeBatch(db);
+        const cardRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
+        
+        // Liberar cartón actual
+        batch.update(cardRef, {
+          status: 'available',
+          playerId: null,
+          playerName: null,
+          authBy: null
+        });
+
+        await batch.commit();
+        alert('Cartón liberado. Ahora puedes escoger uno nuevo.');
+        return true;
       };
 
       const handleActivateCard = useCallback(async (cardId) => {
         const target = cards.find(c => c.id === cardId);
         if (!target) return { success: false, msg: 'Error: Cartón no registrado' };
         if (target.status === 'active') return { success: false, msg: 'Aviso: Este cartón ya fue activado' };
+        if (target.status === 'available') return { success: false, msg: 'Aviso: Este cartón no ha sido reservado' };
 
         const ref = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
-        await updateDoc(ref, { status: 'active' });
+        await updateDoc(ref, { 
+          status: 'active',
+          authBy: user.uid,
+          activatedAt: Date.now()
+        });
         return { success: true, msg: `¡Éxito! Cartón de ${target.playerName} activado` };
-      }, [cards]);
+      }, [cards, user]);
 
       if (authError) return html`<${FirebaseDiagnostic} error=${authError} />`;
 
@@ -325,29 +415,29 @@
         <div class="min-h-screen flex flex-col bg-slate-950 text-slate-50">
           ${renderHeader()}
           <main class="flex-1 flex flex-col">
-            ${view === 'home' && html`<\${HomeView} setView=${setView} />`}
-            ${view === 'player' && html`<\${PlayerView} activeEvent=${activeEvent} myCards=${myCards} onBuyCard=${handleBuyCard} />`}
-            ${view === 'scanner' && html`<\${ScannerView} onActivateCard=${handleActivateCard} />`}
-            ${view === 'admin' && html`<\${AdminView} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${handleChangePattern} onResetGame=${handleResetGame} />`}
-            ${view === 'display' && html`<\${DisplayView} activeEvent=${activeEvent} onExit=${() => setView('home')} />`}
+            ${view === 'home' && html`<${HomeView} setView=${setView} userRole=${userRole} />`}
+            ${view === 'player' && html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />`}
+            ${view === 'scanner' && html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />`}
+            ${view === 'admin' && html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${handleChangePattern} onResetGame=${handleResetGame} />`}
+            ${view === 'display' && html`<${DisplayView} activeEvent=${activeEvent} onExit=${() => setView('home')} />`}
           </main>
         </div>
       `;
     }
 
     // --- VISTA: MENÚ PRINCIPAL INTERACTIVO ---
-    function HomeView({ setView }) {
+    function HomeView({ setView, userRole }) {
       return html`
         <div class="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto space-y-12">
           <div class="space-y-4">
             <div class="inline-flex p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20 mb-2">
-              <span class="text-xs font-black uppercase tracking-widest">v2.0 Production Ready</span>
+              <span class="text-xs font-black uppercase tracking-widest">v3.0 Bingo Enterprise</span>
             </div>
             <h1 class="text-6xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
               Bingo Pro Virtual
             </h1>
             <p class="text-slate-400 text-lg max-w-xl mx-auto">
-              Plataforma en tiempo real para la gestión automatizada de sorteos de bingo por eventos, con verificación biométrica QR e integraciones de voz.
+              Plataforma Senior de gestión de sorteos. Rol detectado: <span class="text-indigo-400 font-bold uppercase">${userRole}</span>
             </p>
           </div>
 
@@ -355,25 +445,29 @@
             <button onClick=${() => setView('player')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl transition-all duration-300 group text-left">
               <div class="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">01</div>
               <span class="font-bold text-xl text-slate-100 mb-1">Módulo Jugador</span>
-              <span class="text-sm text-slate-400">Adquiere tu cartón en línea y visualiza tus números activos.</span>
+              <span class="text-sm text-slate-400">Escoge tu cartón disponible y prepárate para jugar.</span>
             </button>
             
-            <button onClick=${() => setView('scanner')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl transition-all duration-300 group text-left">
-              <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">02</div>
-              <span class="font-bold text-xl text-slate-100 mb-1">Control de Entrada</span>
-              <span class="text-sm text-slate-400">Escanea los códigos QR mediante la cámara web para dar acceso.</span>
-            </button>
+            ${(userRole === ROLES.SUPER_ADMIN || userRole === ROLES.COLLABORATOR) && html`
+              <button onClick=${() => setView('scanner')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl transition-all duration-300 group text-left">
+                <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">02</div>
+                <span class="font-bold text-xl text-slate-100 mb-1">Validación</span>
+                <span class="text-sm text-slate-400">Autoriza jugadores y gestiona cambios de cartón.</span>
+              </button>
+            `}
 
-            <button onClick=${() => setView('admin')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-2xl transition-all duration-300 group text-left">
-              <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl group-hover:bg-purple-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">03</div>
-              <span class="font-bold text-xl text-slate-100 mb-1">Administración</span>
-              <span class="text-sm text-slate-400">Control maestro del bolillero virtual y modos de victoria.</span>
-            </button>
+            ${userRole === ROLES.SUPER_ADMIN && html`
+              <button onClick=${() => setView('admin')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-2xl transition-all duration-300 group text-left">
+                <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl group-hover:bg-purple-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">03</div>
+                <span class="font-bold text-xl text-slate-100 mb-1">Super Admin</span>
+                <span class="text-sm text-slate-400">Configura eventos, pre-genera cartones y gestiona personal.</span>
+              </button>
+            `}
 
             <button onClick=${() => setView('display')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl transition-all duration-300 group text-left">
               <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">04</div>
               <span class="font-bold text-xl text-slate-100 mb-1">Pantalla Gigante</span>
-              <span class="text-sm text-slate-400">Proyección limpia ideal para transmitir vía HDMI o monitores.</span>
+              <span class="text-sm text-slate-400">Visualización en tiempo real para el público.</span>
             </button>
           </div>
         </div>
@@ -381,8 +475,13 @@
     }
 
     // --- VISTA: MÓDULO DEL JUGADOR ---
-    function PlayerView({ activeEvent, myCards, onBuyCard }) {
+    function PlayerView({ activeEvent, cards, user, onReserveCard, onRequestChange }) {
       const [name, setName] = useState('');
+      const [showChangeModal, setShowChangeModal] = useState(false);
+      const [changeCode, setChangeCode] = useState('');
+
+      const myCard = useMemo(() => cards.find(c => c.playerId === user?.uid), [cards, user]);
+      const availableCards = useMemo(() => cards.filter(c => c.status === 'available').sort((a,b) => a.cardNumber - b.cardNumber), [cards]);
 
       if (!activeEvent) {
         return html`
@@ -392,107 +491,143 @@
         `;
       }
 
-      if (myCards.length === 0) {
+      if (!myCard) {
         return html`
-          <div class="max-w-md w-full mx-auto mt-16 p-8 bg-slate-900 border border-slate-800 rounded-3xl shadow-xl">
-            <h2 class="text-2xl font-black mb-2 text-slate-100">Adquirir Cartón Virtual</h2>
-            <p class="text-slate-400 text-sm mb-6">Asiste al evento: ${activeEvent.name}</p>
-            <form onSubmit=${e => { e.preventDefault(); name.trim() && onBuyCard(name); }} class="space-y-4">
-              <div>
-                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nombre Completo</label>
-                <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="Ej. Jose Urbina" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-indigo-500 transition" required />
-              </div>
-              <button type="submit" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Generar Token de Entrada</button>
-            </form>
+          <div class="max-w-4xl w-full mx-auto p-6 space-y-8">
+            <div class="text-center space-y-2">
+              <h2 class="text-3xl font-black text-white">Escoge tu Cartón</h2>
+              <p class="text-slate-400">Introduce tu nombre y selecciona uno de los ${availableCards.length} cartones disponibles.</p>
+            </div>
+
+            <div class="max-w-md mx-auto bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8">
+              <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Tu Nombre de Jugador</label>
+              <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="Ej. Juan Pérez" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:border-indigo-500 outline-none" />
+            </div>
+
+            <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+              ${availableCards.map(card => html`
+                <button 
+                  key=${card.id}
+                  onClick=${() => { if(!name.trim()) return alert('Ingresa tu nombre primero'); onReserveCard(card.id, name); }}
+                  class="aspect-square flex flex-col items-center justify-center bg-slate-900 border border-slate-800 rounded-xl hover:border-indigo-500 hover:bg-indigo-500/10 transition-all group"
+                >
+                  <span class="text-xs text-slate-500 group-hover:text-indigo-400 font-bold">#${card.cardNumber}</span>
+                  <span class="text-xl font-black text-slate-300 group-hover:text-white">ID</span>
+                </button>
+              `)}
+            </div>
           </div>
         `;
       }
 
+      const numbers = JSON.parse(myCard.numbers);
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myCard.id}&color=15-23-42`;
+
       return html`
         <div class="max-w-xl w-full mx-auto p-4 space-y-8 pb-24">
-          <h2 class="text-3xl font-black text-center text-slate-100 mt-4">Tus Cartones Virtuales</h2>
-          ${myCards.map(card => {
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${card.id}&color=15-23-42`;
-            const numbers = JSON.parse(card.numbers);
+          <div class="flex justify-between items-center mt-4">
+            <h2 class="text-2xl font-black text-slate-100">Tu Juego</h2>
+            <button onClick=${() => setShowChangeModal(true)} class="text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 px-4 py-2 rounded-xl border border-slate-700 transition">
+              Cambiar Cartón
+            </button>
+          </div>
 
-            if (card.status === 'pending') {
-              return html`
-                <div key=${card.id} class="bg-white text-slate-900 rounded-3xl p-8 text-center shadow-2xl border border-slate-200">
-                  <span class="inline-flex bg-amber-100 text-amber-900 font-black text-xs px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">Acceso Pendiente</span>
-                  <h3 class="text-2xl font-bold mb-2">${card.playerName}</h3>
-                  <p class="text-sm text-slate-500 max-w-xs mx-auto mb-6">Presenta este código QR en la boletería de la entrada para validar tu acceso y activar el tablero.</p>
-                  <div class="bg-slate-100 p-4 rounded-2xl inline-block border shadow-inner">
-                    <img src=${qrUrl} alt="QR Authenticator" class="w-56 h-56 mx-auto" />
-                  </div>
-                  <p class="mt-4 text-xs font-mono text-slate-400 select-all">UID: ${card.id}</p>
+          ${myCard.status === 'reserved' ? html`
+            <div class="bg-white text-slate-900 rounded-3xl p-8 text-center shadow-2xl border border-slate-200">
+              <span class="inline-flex bg-amber-100 text-amber-900 font-black text-xs px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">Esperando Autorización</span>
+              <h3 class="text-2xl font-bold mb-2">${myCard.playerName}</h3>
+              <p class="text-sm text-slate-500 max-w-xs mx-auto mb-6">Busca a un colaborador y muéstrale este QR para activar tu cartón #${myCard.cardNumber}.</p>
+              <div class="bg-slate-100 p-4 rounded-2xl inline-block border shadow-inner">
+                <img src=${qrUrl} alt="QR Authenticator" class="w-56 h-56 mx-auto" />
+              </div>
+              <p class="mt-4 text-xs font-mono text-slate-400">CARTÓN #${myCard.cardNumber}</p>
+            </div>
+          ` : html`
+            <div class="bg-slate-900 border-2 border-indigo-500/50 rounded-3xl overflow-hidden shadow-2xl">
+              <div class="bg-gradient-to-r from-indigo-900 to-slate-900 p-4 border-b border-slate-800 flex justify-between items-center">
+                <div>
+                  <p class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Cartón #${myCard.cardNumber} Activo</p>
+                  <h3 class="text-lg font-bold text-white">${myCard.playerName}</h3>
                 </div>
-              `;
-            }
-
-            return html`
-              <div key=${card.id} class="bg-slate-900 border-2 border-indigo-500/50 rounded-3xl overflow-hidden shadow-2xl">
-                <div class="bg-gradient-to-r from-indigo-900 to-slate-900 p-4 border-b border-slate-800 flex justify-between items-center">
-                  <div>
-                    <p class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Cartón Sincronizado</p>
-                    <h3 class="text-lg font-bold text-white">${card.playerName}</h3>
-                  </div>
-                  <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
+                <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
+              </div>
+              <div class="p-4 bg-slate-950">
+                <div class="grid grid-cols-5 gap-2 mb-2 text-center">
+                  ${['B', 'I', 'N', 'G', 'O'].map(l => html`<div class="font-black text-xl text-indigo-400 py-2 bg-slate-900 rounded-xl border border-slate-800">${l}</div>`)}
                 </div>
-                <div class="p-4 bg-slate-950">
-                  <div class="grid grid-cols-5 gap-2 mb-2 text-center">
-                    ${['B', 'I', 'N', 'G', 'O'].map(l => html`<div class="font-black text-xl text-indigo-400 py-2 bg-slate-900 rounded-xl border border-slate-800">${l}</div>`)}
-                  </div>
-                  <div class="grid grid-cols-5 gap-2">
-                    ${numbers.map((row) => row.map((cell) => {
-                      const isFree = cell === 'FREE';
-                      const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
-                      
-                      return html`
-                        <div class="aspect-square rounded-xl flex flex-col items-center justify-center text-xl font-bold select-none border transition-all duration-200
-                          ${isFree ? 'bg-indigo-600 text-white border-indigo-500' : isDrawn ? 'bg-emerald-600 text-white border-emerald-500 scale-95 shadow-md' : 'bg-slate-900 text-slate-400 border-slate-800 hover:bg-slate-800 cursor-pointer'}"
-                        >
-                          ${isFree ? html`⭐` : cell}
-                        </div>
-                      `;
-                    }))}
-                  </div>
+                <div class="grid grid-cols-5 gap-2">
+                  ${numbers.map((row) => row.map((cell) => {
+                    const isFree = cell === 'FREE';
+                    const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
+                    return html`
+                      <div class="aspect-square rounded-xl flex flex-col items-center justify-center text-xl font-bold border transition-all duration-200
+                        ${isFree ? 'bg-indigo-600 text-white border-indigo-500' : isDrawn ? 'bg-emerald-600 text-white border-emerald-500 scale-95 shadow-md' : 'bg-slate-900 text-slate-400 border-slate-800'}">
+                        ${isFree ? html`⭐` : cell}
+                      </div>
+                    `;
+                  }))}
                 </div>
               </div>
-            `;
-          })}
+            </div>
+          `}
+
+          ${showChangeModal && html`
+            <div class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-sm">
+              <div class="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
+                <h3 class="text-xl font-black text-white mb-2">Solicitar Cambio</h3>
+                <p class="text-sm text-slate-400 mb-6">Pide a un colaborador el código de cambio de 6 dígitos.</p>
+                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-2xl font-black tracking-widest text-indigo-400 mb-6 outline-none focus:border-indigo-500" />
+                <div class="flex gap-3">
+                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-3 font-bold text-slate-400 hover:text-white transition">Cancelar</button>
+                  <button onClick=${async () => { const success = await onRequestChange(myCard.id, changeCode); if(success) setShowChangeModal(false); }} class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Validar Cambio</button>
+                </div>
+              </div>
+            </div>
+          `}
         </div>
       `;
     }
 
     // --- VISTA: ESCÁNER QR REAL POR CÁMARA (RECEPCIÓN/ENTRADA) ---
-    function ScannerView({ onActivateCard }) {
+    function ScannerView({ user, onActivateCard }) {
       const [log, setLog] = useState({ text: 'Esperando detección...', type: 'info' });
       const [manualId, setManualId] = useState('');
+      const [myCollabData, setMyCollabData] = useState(null);
+      const [linkEmail, setLinkEmail] = useState('');
+
+      useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS), (snap) => {
+          const collab = snap.docs.find(doc => doc.data().uid === user.uid);
+          if (collab) setMyCollabData({ id: collab.id, ...collab.data() });
+        });
+        return () => unsubscribe();
+      }, [user]);
+
+      const handleLinkAccount = async () => {
+        const collabsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS);
+        const q = query(collabsRef, where('email', '==', linkEmail.trim()));
+        const snap = await getDocs(q);
+        
+        if (snap.empty) return alert('Email no registrado como colaborador.');
+        
+        const collabDoc = snap.docs[0];
+        await updateDoc(collabDoc.ref, { uid: user.uid });
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS, user.uid), { role: ROLES.COLLABORATOR });
+        alert('Cuenta vinculada con éxito.');
+      };
 
       useEffect(() => {
         const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 260 }, false);
-        
         async function onScanSuccess(decodedText) {
-          html5QrcodeScanner.clear(); // Pausar escáner momentáneamente
+          html5QrcodeScanner.clear();
           setLog({ text: 'Procesando token...', type: 'info' });
           const res = await onActivateCard(decodedText);
           setLog({ text: res.msg, type: res.success ? 'success' : 'error' });
-          
-          // Reactivar escáner tras delay
-          setTimeout(() => {
-            html5QrcodeScanner.render(onScanSuccess, onScanError);
-          }, 2500);
+          setTimeout(() => { html5QrcodeScanner.render(onScanSuccess, onScanError); }, 2500);
         }
-
-        function onScanError(err) {
-          // Callback pasivo silencioso para no saturar consola
-        }
-
+        function onScanError(err) {}
         html5QrcodeScanner.render(onScanSuccess, onScanError);
-
-        return () => {
-          html5QrcodeScanner.clear().catch(e => {});
-        };
+        return () => { html5QrcodeScanner.clear().catch(e => {}); };
       }, [onActivateCard]);
 
       const handleManualSubmit = async (e) => {
@@ -505,6 +640,21 @@
 
       return html`
         <div class="max-w-lg w-full mx-auto p-4 space-y-6 mt-6 pb-12">
+          ${!myCollabData ? html`
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-4">
+              <h3 class="text-xl font-black text-white">Vincular Colaborador</h3>
+              <p class="text-sm text-slate-400">Si eres un colaborador, ingresa tu email para activar tus permisos de validación.</p>
+              <input type="email" value=${linkEmail} onChange=${e => setLinkEmail(e.target.value)} placeholder="tu@email.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+              <button onClick=${handleLinkAccount} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Vincular Mi UID</button>
+            </div>
+          ` : html`
+            <div class="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl">
+              <p class="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Tu Código de Cambio</p>
+              <h3 class="text-4xl font-black tracking-[0.5em]">${myCollabData.changeCode}</h3>
+              <p class="text-[10px] mt-4 opacity-70">Entrega este código al jugador si desea liberar su cartón actual.</p>
+            </div>
+          `}
+
           <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl text-center">
             <h2 class="text-2xl font-black text-slate-100 mb-1">Check-in Automático</h2>
             <p class="text-sm text-slate-400 mb-6">Apunta el código QR del cliente hacia la cámara</p>
@@ -530,16 +680,51 @@
     }
 
     // --- VISTA: PANEL DE CONTROL DE ADMINISTRADOR ---
-    function AdminView({ activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame }) {
+    function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame }) {
       const [isProcessing, setIsProcessing] = useState(false);
+      const [eventName, setEventName] = useState('');
+      const [cardCount, setCardCount] = useState(100);
+      const [collabEmail, setCollabEmail] = useState('');
+      const [collabs, setCollabs] = useState([]);
 
-      if (!activeEvent) {
+      useEffect(() => {
+        if (userRole === ROLES.SUPER_ADMIN) {
+          const unsubscribe = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS), (snap) => {
+            setCollabs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+          });
+          return () => unsubscribe();
+        }
+      }, [userRole]);
+
+      const handleAddCollab = async () => {
+        if (!collabEmail.trim()) return;
+        const newRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS));
+        await setDoc(newRef, {
+          email: collabEmail.trim(),
+          changeCode: BingoEngine.generateUniqueCode(),
+          createdAt: Date.now()
+        });
+        setCollabEmail('');
+      };
+
+      if (!activeEvent && userRole === ROLES.SUPER_ADMIN) {
         return html`
           <div class="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto text-center">
-            <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-xl">
-              <h2 class="text-2xl font-black mb-2">Inicializar Consola</h2>
-              <p class="text-slate-400 text-sm mb-6">No hay ningún evento activo registrado en la base de datos de este nodo.</p>
-              <button onClick=${onCreateEvent} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Crear Evento en Tiempo Real</button>
+            <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-xl space-y-6">
+              <h2 class="text-2xl font-black mb-2">Configurar Nuevo Evento</h2>
+              <div class="space-y-4 text-left">
+                <div>
+                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Nombre del Evento</label>
+                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="Bingo de Verano" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Cartones Únicos</label>
+                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition shadow-lg">
+                CREAR Y PRE-GENERAR CARTONES
+              </button>
             </div>
           </div>
         `;
@@ -562,6 +747,7 @@
       return html`
         <div class="max-w-5xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 pb-20">
           <div class="md:col-span-2 space-y-6">
+            <!-- Panel de Sorteo (Existente) -->
             <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col items-center shadow-xl">
               <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Última Esfera Extraída</h3>
               <div class="w-52 h-52 bg-gradient-to-br from-slate-900 to-indigo-950 rounded-full flex items-center justify-center shadow-2xl border-4 border-indigo-500/30 mb-8 relative">
@@ -573,19 +759,42 @@
               </button>
             </div>
 
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-              <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4">Registro Secuencial (${activeEvent.drawnNumbers.length}/75)</h3>
-              <div class="flex flex-wrap gap-2 max-h-40 overflow-y-auto p-2 bg-slate-950 rounded-xl border border-slate-900">
-                ${[...activeEvent.drawnNumbers].reverse().map((num, i) => html`
-                  <span key=${i} class="w-10 h-10 flex items-center justify-center rounded-full font-bold text-sm ${i === 0 ? 'bg-indigo-600 text-white ring-2 ring-indigo-400' : 'bg-slate-900 border border-slate-800 text-slate-400'}">
-                    ${num}
-                  </span>
-                `)}
+            <!-- Gestión de Colaboradores (Nuevo) -->
+            ${userRole === ROLES.SUPER_ADMIN && html`
+              <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
+                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Gestión de Colaboradores</h3>
+                <div class="flex gap-2">
+                  <input type="email" value=${collabEmail} onChange=${e => setCollabEmail(e.target.value)} placeholder="Email del colaborador" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500" />
+                  <button onClick=${handleAddCollab} class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 rounded-xl transition">Añadir</button>
+                </div>
+                <div class="space-y-3">
+                  ${collabs.map(c => html`
+                    <div key=${c.id} class="flex justify-between items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
+                      <div>
+                        <p class="text-white font-bold text-sm">${c.email}</p>
+                        <p class="text-xs text-slate-500">ID: ${c.id}</p>
+                      </div>
+                      <div class="text-right">
+                        <p class="text-indigo-400 font-black text-lg tracking-widest">${c.changeCode}</p>
+                        <p class="text-[10px] text-slate-600 uppercase font-bold">Código de Cambio</p>
+                      </div>
+                    </div>
+                  `)}
+                </div>
               </div>
-            </div>
+            `}
           </div>
 
           <div class="space-y-6">
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+              <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Enlace de Invitación</h3>
+              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+                <code class="text-xs text-indigo-400 truncate mr-4">${window.location.origin}${window.location.pathname}</code>
+                <button onClick=${() => { navigator.clipboard.writeText(window.location.href); alert('Copiado'); }} class="text-xs font-bold text-white bg-indigo-600 px-3 py-1 rounded-lg">Copiar</button>
+              </div>
+              <p class="text-[10px] text-slate-500 italic">Comparte este enlace con los jugadores para que escojan sus cartones.</p>
+            </div>
+
             <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
               <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4">Modalidad de Sorteo</h3>
               <div class="space-y-4">
@@ -605,11 +814,11 @@
               <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4">Métricas del Evento</h3>
               <div class="grid grid-cols-2 gap-4">
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <p class="text-xs text-slate-400 font-bold uppercase">Activos</p>
+                  <p class="text-xs text-slate-400 font-bold uppercase">Jugando</p>
                   <p class="text-2xl font-black text-emerald-400">${stats.active}</p>
                 </div>
                 <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <p class="text-xs text-slate-400 font-bold uppercase">En Cola</p>
+                  <p class="text-xs text-slate-400 font-bold uppercase">Por Autorizar</p>
                   <p class="text-2xl font-black text-amber-400">${stats.pending}</p>
                 </div>
               </div>
