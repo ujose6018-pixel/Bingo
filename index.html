@@ -116,6 +116,28 @@
       overflow: hidden;
       pointer-events: none;
     }
+
+    .confetti {
+      position: absolute;
+      width: 10px;
+      height: 10px;
+      background: var(--gold);
+      animation: confetti-fall 3s linear infinite;
+    }
+
+    @keyframes confetti-fall {
+      0% { transform: translateY(-10vh) rotate(0deg); opacity: 1; }
+      100% { transform: translateY(110vh) rotate(720deg); opacity: 0; }
+    }
+
+    .jackpot-glow {
+      animation: jackpot-glow 1s ease-in-out infinite alternate;
+    }
+
+    @keyframes jackpot-glow {
+      from { filter: drop-shadow(0 0 20px rgba(212, 175, 55, 0.4)); }
+      to { filter: drop-shadow(0 0 60px rgba(212, 175, 55, 0.8)); }
+    }
   </style>
 </head>
 <body class="selection:bg-amber-500 selection:text-white">
@@ -148,6 +170,7 @@
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
+    auth.languageCode = 'es'; // Asegura que el popup esté en español
     const db = getFirestore(app);
 
     // --- UTILS ---
@@ -479,6 +502,21 @@
         gain.gain.setValueAtTime(0.1, ctx.currentTime);
         osc.start(); osc.stop(ctx.currentTime + 0.1);
       },
+      playJackpot: () => {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C (higher)
+        notes.forEach((freq, i) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.connect(gain); gain.connect(ctx.destination);
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(freq, ctx.currentTime + (i * 0.1));
+          gain.gain.setValueAtTime(0.1, ctx.currentTime + (i * 0.1));
+          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (i * 0.1) + 0.5);
+          osc.start(ctx.currentTime + (i * 0.1));
+          osc.stop(ctx.currentTime + (i * 0.1) + 0.5);
+        });
+      },
       speak: (text, count = 1) => {
         if (!('speechSynthesis' in window)) return;
         window.speechSynthesis.cancel();
@@ -530,15 +568,38 @@
       const winnersHistory = activeEvent.winnersHistory ? JSON.parse(activeEvent.winnersHistory) : [];
       const isFinished = activeEvent.status === 'finished';
       const lastWinner = winnersHistory.length > 0 ? winnersHistory[winnersHistory.length - 1] : null;
+
+      // Generar confetti virtual
+      const confettiArray = useMemo(() => {
+        if (!isFinished && !(lastWinner && activeEvent.drawnNumbers.length === 0)) return [];
+        return Array.from({ length: 50 }, (_, i) => ({
+          id: i,
+          left: Math.random() * 100 + '%',
+          delay: Math.random() * 3 + 's',
+          color: ['#D4AF37', '#F9E076', '#FFFFFF', '#4338ca'][Math.floor(Math.random() * 4)]
+        }));
+      }, [isFinished, lastWinner, activeEvent.drawnNumbers.length]);
+
+      useEffect(() => {
+        if (isFinished || (lastWinner && activeEvent.drawnNumbers.length === 0)) {
+          VoiceService.playJackpot();
+        }
+      }, [isFinished, lastWinner?.round]);
       
       return html`
         <div class="min-h-screen bg-[#05070a] text-white p-8 flex flex-col gap-8 overflow-hidden relative">
           <!-- ANUNCIO DE GANADORES FINAL (OVERLAY) -->
           ${isFinished && html`
             <div class="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-3xl animate-in fade-in duration-1000">
-              <div class="max-w-6xl w-full p-12 space-y-12 text-center">
+              <div class="confetti-container">
+                ${confettiArray.map(c => html`
+                  <div key=${c.id} class="confetti" style=${{ left: c.left, animationDelay: c.delay, backgroundColor: c.color }}></div>
+                `)}
+              </div>
+              
+              <div class="max-w-6xl w-full p-12 space-y-12 text-center relative z-10">
                 <div class="space-y-4">
-                  <p class="bingo-title text-4xl italic tracking-[0.8em]">GALA FINALIZADA</p>
+                  <p class="bingo-title text-4xl italic tracking-[0.8em] jackpot-glow">GALA FINALIZADA</p>
                   <h2 class="text-7xl font-black text-white uppercase tracking-tighter italic">CUADRO DE HONOR ROYALE</h2>
                 </div>
 
@@ -562,7 +623,7 @@
                 </div>
 
                 <div class="pt-10">
-                  <div class="inline-flex items-center gap-4 px-10 py-5 rounded-full bg-white text-black font-black uppercase tracking-[0.4em] text-2xl">
+                  <div class="inline-flex items-center gap-4 px-10 py-5 rounded-full bg-white text-black font-black uppercase tracking-[0.4em] text-2xl animate-bounce">
                     👑 HASTA LA PRÓXIMA GALA
                   </div>
                 </div>
@@ -573,12 +634,17 @@
           <!-- ANUNCIO DE GANADOR MOMENTÁNEO (ENTRE RONDAS) -->
           ${(!isFinished && lastWinner && activeEvent.drawnNumbers.length === 0) && html`
             <div class="absolute inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-xl animate-in fade-in zoom-in duration-700">
-              <div class="text-center space-y-8">
-                <p class="bingo-title text-3xl italic tracking-[0.5em]">GANADOR RONDA #${lastWinner.round}</p>
+              <div class="confetti-container">
+                ${confettiArray.map(c => html`
+                  <div key=${c.id} class="confetti" style=${{ left: c.left, animationDelay: c.delay, backgroundColor: c.color }}></div>
+                `)}
+              </div>
+              <div class="text-center space-y-8 relative z-10">
+                <p class="bingo-title text-3xl italic tracking-[0.5em] jackpot-glow">GANADOR RONDA #${lastWinner.round}</p>
                 <h2 class="text-[10rem] font-black text-white uppercase tracking-tighter italic leading-none drop-shadow-[0_0_50px_rgba(212,175,55,0.6)]">
                   ${lastWinner.playerName}
                 </h2>
-                <div class="inline-flex items-center gap-4 px-8 py-4 rounded-full bg-amber-500 text-deep-bg font-black uppercase tracking-[0.3em] text-xl">
+                <div class="inline-flex items-center gap-4 px-8 py-4 rounded-full bg-amber-500 text-deep-bg font-black uppercase tracking-[0.3em] text-xl shadow-[0_0_30px_rgba(212,175,55,0.4)]">
                   PREPARANDO SIGUIENTE RONDA...
                 </div>
               </div>
@@ -747,6 +813,7 @@
       const [events, setEvents] = useState([]);
       const [cards, setCards] = useState([]);
       const [loading, setLoading] = useState(true);
+      const [isLocalFile, setIsLocalFile] = useState(window.location.protocol === 'file:');
 
       useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (u) => {
@@ -792,12 +859,28 @@
 
       // Actions
       const handleLoginGoogle = async () => {
+        // DETECCIÓN SENIOR DE ORIGEN INVÁLIDO (file://)
+        if (window.location.protocol === 'file:') {
+          alert('🚨 ERROR DE SEGURIDAD GOOGLE:\n\nGoogle Auth NO funciona abriendo el archivo directamente (file://).\n\nDEBES usar un servidor local. Ejecuta esto en tu terminal:\nnpx serve .');
+          return;
+        }
+
         try {
           const provider = new GoogleAuthProvider();
+          // Forzar la selección de cuenta para evitar auto-login fallido
+          provider.setCustomParameters({ prompt: 'select_account' });
+          
           await signInWithPopup(auth, provider);
         } catch (error) {
           console.error("Error Google Login:", error);
-          alert("Error al iniciar sesión con Google.");
+          
+          if (error.code === 'auth/popup-blocked') {
+            alert("🚨 POPUP BLOQUEADO: El navegador bloqueó la ventana de Google. Por favor, permite las ventanas emergentes para este sitio.");
+          } else if (error.code === 'auth/unauthorized-domain') {
+            alert("🚨 DOMINIO NO AUTORIZADO: Debes añadir este dominio o 'localhost' en la consola de Firebase > Authentication > Settings > Authorized Domains.");
+          } else {
+            alert(`Error Royale Auth: ${error.message}`);
+          }
         }
       };
 
@@ -901,78 +984,86 @@
         </div>
       `;
 
-      if (type === 'shared_card') {
-        return html`<${SharedCardView} cardId=${routeInfo.cardId} events=${events} cards=${cards} activeEvent=${activeEvent} />`;
-      }
-
-      if (type === 'display') {
-        return html`<${DisplayView} activeEvent=${activeEvent} />`;
-      }
-
-      // SENIOR INTERFACE ISOLATION
-      if (type === 'admin') {
-        if (userRole !== ROLES.ADMIN) return html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO: NIVEL ADMIN REQUERIDO</div>`;
-        return html`
-          <div class="view-container">
-            <${Navbar} setView=${(v) => navigate('/' + v)} currentView="admin" userRole=${userRole} />
-            <${AdminView} 
-              userRole=${userRole} 
-              activeEvent=${activeEvent} 
-              cards=${cards} 
-              events=${events}
-              onCreateEvent=${handleCreateEvent} 
-              onDrawNumber=${handleDrawNumber} 
-              onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} 
-              onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} 
-              getCleanBaseUrl=${getCleanBaseUrl} 
-              onFinalizeEventExternally=${handleFinalizeEventExternally}
-            />
-          </div>
-        `;
-      }
-
-      if (type === 'staff') {
-        if (userRole !== ROLES.ADMIN && userRole !== ROLES.STAFF) return html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO: NIVEL STAFF REQUERIDO</div>`;
-        return html`
-          <div class="view-container">
-            <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} />
-            <${ScannerView} user=${user} onActivateCard=${handleActivateCard} prefilledEmail=${email} />
-          </div>
-        `;
-      }
-
-      // PLAYER INTERFACE (Default & Event Slug)
-      if (type === 'home' || !activeEvent) {
-        return html`
-          <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-8 bg-black">
-            <div class="space-y-4">
-              <h1 class="bingo-title text-6xl italic">ROYALE ACCESS</h1>
-              <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
-              <p class="text-amber-500 font-black text-xs uppercase tracking-[0.4em] max-w-xs mx-auto leading-relaxed">
-                Ingresa con el URL del evento para acceder a la mesa de juego privada.
-              </p>
-            </div>
-            <div class="glass-card p-8 rounded-[2rem] border-rose-500/20">
-              <span class="text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
-                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Acceso Restringido
-              </span>
-            </div>
-          </div>
-        `;
-      }
-
       return html`
-        <div class="view-container">
-          <${PlayerView} 
-            activeEvent=${activeEvent} 
-            cards=${cards} 
-            user=${user} 
-            onReserveCard=${handleReserveCard} 
-            onRequestChange=${handleRequestChange} 
-            onLoginGoogle=${handleLoginGoogle}
-            onLogout=${handleLogout}
-            onShareCard=${handleShareCard}
-          />
+        <div class="view-container relative">
+          ${isLocalFile && html`
+            <div class="fixed bottom-6 left-6 right-6 z-[1000] glass-card p-6 rounded-3xl border-rose-500/40 bg-rose-500/10 backdrop-blur-3xl flex flex-col md:flex-row items-center justify-between gap-6 animate-in slide-in-from-bottom duration-700">
+              <div class="flex items-center gap-4">
+                <div class="w-12 h-12 bg-rose-500 rounded-2xl flex items-center justify-center text-2xl shadow-[0_0_20px_rgba(244,63,94,0.4)]">⚠️</div>
+                <div class="text-left">
+                  <p class="text-white font-black text-sm uppercase tracking-tighter italic">Error de Origen Detectado</p>
+                  <p class="text-rose-200 text-[10px] font-medium leading-tight">Google Auth NO funciona en <code class="bg-black/40 px-1 rounded">file://</code>. Debes usar un servidor local para jugar.</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-4 w-full md:w-auto">
+                <div class="bg-black/60 px-4 py-2 rounded-xl border border-white/10 font-mono text-[10px] text-emerald-400 flex-1 md:flex-initial text-center">npx serve .</div>
+                <button onClick=${() => setIsLocalFile(false)} class="text-white/40 hover:text-white transition-colors text-xs">✕</button>
+              </div>
+            </div>
+          `}
+
+          ${type === 'shared_card' ? html`<${SharedCardView} cardId=${routeInfo.cardId} events=${events} cards=${cards} activeEvent=${activeEvent} />` : null}
+          ${type === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} />` : null}
+          ${type === 'admin' ? (
+            userRole !== ROLES.ADMIN ? html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO</div>` : 
+            html`
+              <div class="view-container">
+                <${Navbar} setView=${(v) => navigate('/' + v)} currentView="admin" userRole=${userRole} />
+                <${AdminView} 
+                  userRole=${userRole} 
+                  activeEvent=${activeEvent} 
+                  cards=${cards} 
+                  events=${events}
+                  onCreateEvent=${handleCreateEvent} 
+                  onDrawNumber=${handleDrawNumber} 
+                  onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} 
+                  onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} 
+                  getCleanBaseUrl=${getCleanBaseUrl} 
+                  onFinalizeEventExternally=${handleFinalizeEventExternally}
+                />
+              </div>
+            `
+          ) : null}
+          ${type === 'staff' ? (
+            (userRole !== ROLES.ADMIN && userRole !== ROLES.STAFF) ? html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO</div>` :
+            html`
+              <div class="view-container">
+                <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} />
+                <${ScannerView} user=${user} onActivateCard=${handleActivateCard} prefilledEmail=${email} />
+              </div>
+            `
+          ) : null}
+          ${(type === 'player' || type === 'home') ? (
+            (!activeEvent || type === 'home') ? html`
+              <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-8 bg-black">
+                <div class="space-y-4">
+                  <h1 class="bingo-title text-6xl italic">ROYALE ACCESS</h1>
+                  <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
+                  <p class="text-amber-500 font-black text-xs uppercase tracking-[0.4em] max-w-xs mx-auto leading-relaxed">
+                    Ingresa con el URL del evento para acceder a la mesa de juego privada.
+                  </p>
+                </div>
+                <div class="glass-card p-8 rounded-[2rem] border-rose-500/20">
+                  <span class="text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Acceso Restringido
+                  </span>
+                </div>
+              </div>
+            ` : html`
+              <div class="view-container">
+                <${PlayerView} 
+                  activeEvent=${activeEvent} 
+                  cards=${cards} 
+                  user=${user} 
+                  onReserveCard=${handleReserveCard} 
+                  onRequestChange=${handleRequestChange} 
+                  onLoginGoogle=${handleLoginGoogle}
+                  onLogout=${handleLogout}
+                  onShareCard=${handleShareCard}
+                />
+              </div>
+            `
+          ) : null}
         </div>
       `;
     }
