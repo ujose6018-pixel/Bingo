@@ -906,59 +906,59 @@
 
       // Actions
       const handleSystemLogin = async (username, password) => {
-        // NORMALIZACIÓN SENIOR
         const userClean = username.trim().toLowerCase();
         const passClean = password.trim();
         const email = `${userClean}${SYSTEM_DOMAIN}`;
 
         try {
-          // 1. LOGIN DE EMERGENCIA DIRECTO (Hardcoded para máxima fiabilidad)
+          // 1. BYPASS DE SEGURIDAD PARA ADMIN (admin/admin)
           if (userClean === 'admin' && passClean === 'admin') {
             try {
-              // Intentar login
+              // Intentar login con Firebase
               const res = await signInWithEmailAndPassword(auth, email, passClean);
-              // Asegurar que tenga el rol en la base de datos
               await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN }, { merge: true });
+              setUserRole(ROLES.ADMIN);
               return true;
             } catch (error) {
-              // Si no existe el usuario 'admin@royale.internal', lo creamos
+              // Si no existe, crearlo
               if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
-                try {
-                  const res = await createUserWithEmailAndPassword(auth, email, passClean);
-                  await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
-                  return true;
-                } catch (createErr) {
-                  // Si falla la creación (ej: ya existe pero clave distinta), intentamos login de nuevo por si acaso
-                  console.error("Emergency Create Error:", createErr);
-                }
+                const res = await createUserWithEmailAndPassword(auth, email, passClean);
+                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
+                setUserRole(ROLES.ADMIN);
+                return true;
               }
-            }
-          }
-
-          // 2. Intentar Login Directo para otros usuarios (Staff)
-          await signInWithEmailAndPassword(auth, email, passClean);
-          return true;
-        } catch (error) {
-          console.error("Auth System Error:", error.code, error.message);
-          
-          // 3. Verificar si es un Staff creado por el Admin en Firestore (Modo Fallback)
-          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
-            where('username', '==', userClean), 
-            where('password', '==', passClean)));
-            
-          if (!staffSnap.empty) {
-            try {
-              // Auto-registrar en Firebase Auth si no existe
-              const res = await createUserWithEmailAndPassword(auth, email, passClean);
-              await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', staffSnap.docs[0].id), { uid: res.user.uid });
-              return true;
-            } catch (e) {
-              if (e.code === 'auth/email-already-in-use') {
-                await signInWithEmailAndPassword(auth, email, passClean);
+              // Si el usuario existe pero la clave es distinta en Firebase (auth/wrong-password)
+              // o cualquier otro error, usamos el UID actual para no bloquear el acceso.
+              if (auth.currentUser) {
+                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', auth.currentUser.uid), { role: ROLES.ADMIN });
+                setUserRole(ROLES.ADMIN);
                 return true;
               }
             }
           }
+
+          // 2. Login para Staff y otros usuarios
+          const res = await signInWithEmailAndPassword(auth, email, passClean);
+          // Verificar rol en Firestore
+          const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
+          if (uSnap.exists()) {
+            setUserRole(uSnap.data().role);
+            return true;
+          }
+          
+          // Fallback para Staff creados manualmente en la colección 'staff'
+          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
+            where('username', '==', userClean), 
+            where('password', '==', passClean)));
+          
+          if (!staffSnap.empty) {
+            setUserRole(ROLES.STAFF);
+            return true;
+          }
+
+          return false;
+        } catch (error) {
+          console.error("Auth System Error:", error);
           return false;
         }
       };
