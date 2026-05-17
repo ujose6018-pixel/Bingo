@@ -107,6 +107,15 @@
       display: flex;
       flex-direction: column;
     }
+
+    /* Confetti */
+    .confetti-container {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      pointer-events: none;
+    }
   </style>
 </head>
 <body class="selection:bg-amber-500 selection:text-white">
@@ -305,20 +314,37 @@
                         ${matrix.map(row => row.map((cell, cellIdx) => {
                           const isFree = cell === 'FREE';
                           const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
+                          const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
+                          const isMarkedExternally = markTimes[cell] || isFree;
                           
-                          const toggleMark = (e) => {
+                          const toggleMark = async (e) => {
                             if (card.status !== 'active') return;
                             if (!isDrawn && !isFree) {
                               const letter = ['B','I','N','G','O'][cellIdx];
                               VoiceService.speak(`El número ${letter} ${cell} aún no ha sido sorteado`, 1);
                               return;
                             }
+                            
+                            const isMarked = e.target.classList.contains('bingo-cell-marked');
+                            const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
+                            
+                            if (!isMarked) {
+                              markTimes[cell] = Date.now();
+                            } else {
+                              delete markTimes[cell];
+                            }
+
                             e.target.classList.toggle('bingo-cell-marked');
                             e.target.classList.toggle('active-number-glow');
+
+                            // Sincronizar con Firestore para auditoría senior
+                            await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', card.id), {
+                              markTimes: JSON.stringify(markTimes)
+                            });
                           };
 
                           return html`
-                            <div onClick=${toggleMark} class="bingo-cell cursor-pointer ${isFree ? 'bingo-cell-free bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}">
+                            <div onClick=${toggleMark} class="bingo-cell cursor-pointer ${isMarkedExternally ? 'bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}">
                               ${isFree ? '★' : cell}
                             </div>
                           `;
@@ -465,14 +491,72 @@
 
       const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1];
       const history = [...activeEvent.drawnNumbers].reverse().slice(1, 6);
+      const winnersHistory = activeEvent.winnersHistory ? JSON.parse(activeEvent.winnersHistory) : [];
+      const isFinished = activeEvent.status === 'finished';
+      const lastWinner = winnersHistory.length > 0 ? winnersHistory[winnersHistory.length - 1] : null;
       
       return html`
-        <div class="min-h-screen bg-[#05070a] text-white p-8 flex flex-col gap-8 overflow-hidden">
+        <div class="min-h-screen bg-[#05070a] text-white p-8 flex flex-col gap-8 overflow-hidden relative">
+          <!-- ANUNCIO DE GANADORES FINAL (OVERLAY) -->
+          ${isFinished && html`
+            <div class="absolute inset-0 z-[100] flex items-center justify-center bg-black/95 backdrop-blur-3xl animate-in fade-in duration-1000">
+              <div class="max-w-6xl w-full p-12 space-y-12 text-center">
+                <div class="space-y-4">
+                  <p class="bingo-title text-4xl italic tracking-[0.8em]">GALA FINALIZADA</p>
+                  <h2 class="text-7xl font-black text-white uppercase tracking-tighter italic">CUADRO DE HONOR ROYALE</h2>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                  ${winnersHistory.map(w => html`
+                    <div key=${w.round} class="glass-card p-8 rounded-[3rem] border-amber-500/20 space-y-4 relative overflow-hidden group hover:border-amber-500 transition-all">
+                      <div class="absolute top-4 right-6 text-[10px] font-black text-amber-500/20 group-hover:text-amber-500 transition-colors uppercase italic">Ronda #${w.round}</div>
+                      <div class="space-y-1 text-left">
+                        <p class="text-white font-black text-3xl uppercase tracking-tighter">${w.playerName}</p>
+                        <p class="text-amber-500/60 font-black text-[10px] uppercase tracking-widest">Mesa #${w.cardNumber}</p>
+                      </div>
+                      <div class="flex justify-between items-end pt-4 border-t border-white/5">
+                        <div class="text-left">
+                          <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">Velocidad</p>
+                          <p class="text-emerald-500 font-black text-2xl italic">${w.speed}s</p>
+                        </div>
+                        <div class="w-10 h-10 bg-amber-500/10 rounded-full flex items-center justify-center text-xl">🏆</div>
+                      </div>
+                    </div>
+                  `)}
+                </div>
+
+                <div class="pt-10">
+                  <div class="inline-flex items-center gap-4 px-10 py-5 rounded-full bg-white text-black font-black uppercase tracking-[0.4em] text-2xl">
+                    👑 HASTA LA PRÓXIMA GALA
+                  </div>
+                </div>
+              </div>
+            </div>
+          `}
+
+          <!-- ANUNCIO DE GANADOR MOMENTÁNEO (ENTRE RONDAS) -->
+          ${(!isFinished && lastWinner && activeEvent.drawnNumbers.length === 0) && html`
+            <div class="absolute inset-0 z-[90] flex items-center justify-center bg-black/60 backdrop-blur-xl animate-in fade-in zoom-in duration-700">
+              <div class="text-center space-y-8">
+                <p class="bingo-title text-3xl italic tracking-[0.5em]">GANADOR RONDA #${lastWinner.round}</p>
+                <h2 class="text-[10rem] font-black text-white uppercase tracking-tighter italic leading-none drop-shadow-[0_0_50px_rgba(212,175,55,0.6)]">
+                  ${lastWinner.playerName}
+                </h2>
+                <div class="inline-flex items-center gap-4 px-8 py-4 rounded-full bg-amber-500 text-deep-bg font-black uppercase tracking-[0.3em] text-xl">
+                  PREPARANDO SIGUIENTE RONDA...
+                </div>
+              </div>
+            </div>
+          `}
+
           <!-- TOP BAR -->
           <div class="flex justify-between items-center border-b border-amber-500/20 pb-6">
             <div class="space-y-1">
               <h1 class="bingo-title text-5xl italic">${activeEvent.name}</h1>
-              <p class="text-amber-500/60 font-black text-xs uppercase tracking-[0.4em]">Sorteo Oficial en Tiempo Real</p>
+              <div class="flex items-center gap-3">
+                <p class="text-amber-500/60 font-black text-xs uppercase tracking-[0.4em]">Sorteo Oficial</p>
+                <span class="px-3 py-1 bg-white/5 rounded-full text-[10px] font-black text-white uppercase tracking-widest">Jugada ${activeEvent.currentRound} / ${activeEvent.totalRounds}</span>
+              </div>
             </div>
             <div class="text-right">
               <div class="px-6 py-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl inline-block">
@@ -600,17 +684,37 @@
 
       const activeEvent = useMemo(() => {
         if (eventSlug) return events.find(e => e.slug === eventSlug);
-        return events.find(e => e.status === 'active') || events[0];
+        // Priorizar el activo, si no el último creado
+        return events.find(e => e.status === 'active') || events.sort((a,b) => b.createdAt - a.createdAt)[0];
       }, [events, eventSlug]);
 
       // Actions
-      const handleCreateEvent = async (name, count) => {
+      const handleCreateEvent = async (name, count, rounds) => {
         const batch = writeBatch(db);
         const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
-        batch.set(eRef, { name: name || 'Gala Bingo Royale', status: 'active', drawnNumbers: [], pattern: 'full', createdAt: Date.now() });
+        const eventData = { 
+          name: name || 'Gala Bingo Royale', 
+          status: 'active', 
+          drawnNumbers: [], 
+          pattern: 'full', 
+          totalRounds: Number(rounds) || 5,
+          currentRound: 1,
+          winnersHistory: JSON.stringify([]),
+          createdAt: Date.now() 
+        };
+        batch.set(eRef, eventData);
         for(let i=1; i<=count; i++) {
           const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
-          batch.set(cRef, { eventId: eRef.id, cardNumber: i, numbers: JSON.stringify(BingoEngine.generateCard()), status: 'available', playerId: null, playerName: null, createdAt: Date.now() });
+          batch.set(cRef, { 
+            eventId: eRef.id, 
+            cardNumber: i, 
+            numbers: JSON.stringify(BingoEngine.generateCard()), 
+            status: 'available', 
+            playerId: null, 
+            playerName: null, 
+            markTimes: JSON.stringify({}),
+            createdAt: Date.now() 
+          });
         }
         await batch.commit();
         alert('Evento Creado. Comparte el enlace del jugador.');
@@ -686,6 +790,25 @@
       }
 
       // PLAYER INTERFACE (Default & Event Slug)
+      if (type === 'home' || !activeEvent) {
+        return html`
+          <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-8 bg-black">
+            <div class="space-y-4">
+              <h1 class="bingo-title text-6xl italic">ROYALE ACCESS</h1>
+              <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
+              <p class="text-amber-500 font-black text-xs uppercase tracking-[0.4em] max-w-xs mx-auto leading-relaxed">
+                Ingresa con el URL del evento para acceder a la mesa de juego privada.
+              </p>
+            </div>
+            <div class="glass-card p-8 rounded-[2rem] border-rose-500/20">
+              <span class="text-rose-500 font-black text-[10px] uppercase tracking-widest flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> Acceso Restringido
+              </span>
+            </div>
+          </div>
+        `;
+      }
+
       return html`
         <div class="view-container">
           <${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />
@@ -698,9 +821,12 @@
     function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame, getCleanBaseUrl }) {
       const [eventName, setEventName] = useState('');
       const [cardCount, setCardCount] = useState(100);
+      const [totalRounds, setTotalRounds] = useState(5);
       const [collabEmail, setCollabEmail] = useState('');
       const [collabs, setCollabs] = useState([]);
       const [isProcessing, setIsProcessing] = useState(false);
+      const [winnerCandidates, setWinnerCandidates] = useState([]);
+      const [validateCardId, setValidateCardId] = useState('');
 
       const invitationUrl = useMemo(() => {
         if (!activeEvent) return '';
@@ -736,6 +862,125 @@
         return `${getCleanBaseUrl()}#/staff?email=${encodeURIComponent(email)}`;
       };
 
+      const checkWinner = (card, drawnNumbers, pattern) => {
+        const matrix = JSON.parse(card.numbers);
+        const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
+        
+        let cellsToMatch = [];
+        if (pattern === 'full') {
+          for(let r=0; r<5; r++) for(let c=0; c<5; c++) if(matrix[r][c] !== 'FREE') cellsToMatch.push(matrix[r][c]);
+        } else if (pattern === 'line') {
+          // Simplificado: cualquier fila o columna
+          for(let r=0; r<5; r++) {
+            let row = []; for(let c=0; c<5; c++) if(matrix[r][c] !== 'FREE') row.push(matrix[r][c]);
+            cellsToMatch.push(row);
+          }
+          for(let c=0; c<5; c++) {
+            let col = []; for(let r=0; r<5; r++) if(matrix[r][c] !== 'FREE') col.push(matrix[r][c]);
+            cellsToMatch.push(col);
+          }
+        } else if (pattern === 'four_corners') {
+          cellsToMatch = [matrix[0][0], matrix[0][4], matrix[4][0], matrix[4][4]].filter(x => x !== 'FREE');
+        } else if (pattern === 'letter_x') {
+          let diag1 = []; for(let i=0; i<5; i++) if(matrix[i][i] !== 'FREE') diag1.push(matrix[i][i]);
+          let diag2 = []; for(let i=0; i<5; i++) if(matrix[i][4-i] !== 'FREE') diag2.push(matrix[i][4-i]);
+          cellsToMatch = [diag1, diag2];
+        }
+
+        const isMatch = (list) => list.every(n => drawnNumbers.includes(n));
+        const getCompletionTime = (list) => Math.max(...list.map(n => markTimes[n] || 0));
+
+        if (Array.isArray(cellsToMatch[0])) {
+          const validPaths = cellsToMatch.filter(isMatch);
+          if (validPaths.length > 0) {
+            return { valid: true, time: Math.min(...validPaths.map(getCompletionTime)) };
+          }
+        } else {
+          if (isMatch(cellsToMatch)) {
+            return { valid: true, time: getCompletionTime(cellsToMatch) };
+          }
+        }
+        return { valid: false };
+      };
+
+      const handleValidateWinner = async (cardId) => {
+        const card = cards.find(c => c.id === cardId || c.cardNumber == cardId);
+        if (!card) return alert('Cartón no encontrado');
+        
+        const result = checkWinner(card, activeEvent.drawnNumbers, activeEvent.pattern);
+        if (result.valid) {
+          const speed = ((result.time - activeEvent.createdAt) / 1000).toFixed(2);
+          setWinnerCandidates(prev => [...prev, { ...card, completionTime: result.time, speed }].sort((a,b) => a.completionTime - b.completionTime));
+          alert(`¡CARTÓN VÁLIDO! Velocidad: ${speed}s`);
+        } else {
+          alert('CARTÓN NO VÁLIDO: No cumple el patrón con los números sorteados.');
+        }
+      };
+
+      const handleFinalizeEvent = async (winner) => {
+        const isLastRound = activeEvent.currentRound >= activeEvent.totalRounds;
+        const confirmMsg = isLastRound 
+          ? `¿Finalizar gala y declarar ganador de la ronda ${activeEvent.currentRound} a ${winner.playerName}?`
+          : `¿Declarar ganador de la ronda ${activeEvent.currentRound} a ${winner.playerName} y pasar a la siguiente?`;
+        
+        if (!confirm(confirmMsg)) return;
+
+        const currentHistory = activeEvent.winnersHistory ? JSON.parse(activeEvent.winnersHistory) : [];
+        const winnerData = {
+          round: activeEvent.currentRound,
+          playerId: winner.playerId,
+          playerName: winner.playerName,
+          cardNumber: winner.cardNumber,
+          speed: winner.speed,
+          time: Date.now()
+        };
+        const newHistory = [...currentHistory, winnerData];
+
+        if (isLastRound) {
+          // Finalizar Gala
+          await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+            status: 'finished',
+            finishedAt: Date.now(),
+            winnersHistory: JSON.stringify(newHistory),
+            winner: JSON.stringify(winnerData) // Último ganador para el overlay rápido
+          });
+        } else {
+          // Siguiente Ronda
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+            currentRound: activeEvent.currentRound + 1,
+            drawnNumbers: [],
+            winnersHistory: JSON.stringify(newHistory)
+          });
+          
+          // Resetear marcados de cartones para la nueva ronda
+          const activeCards = cards.filter(c => c.status === 'active' || c.status === 'reserved');
+          activeCards.forEach(c => {
+            batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', c.id), {
+              markTimes: JSON.stringify({})
+            });
+          });
+          
+          await batch.commit();
+          setWinnerCandidates([]);
+          setValidateCardId('');
+        }
+        
+        alert(isLastRound ? 'Gala Finalizada.' : `Ronda ${activeEvent.currentRound} completada.`);
+      };
+
+      const handleAddExtraRound = async () => {
+        const pass = prompt('Ingresa la contraseña maestra para añadir una ronda extra:');
+        if (pass === '2026') {
+          await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+            totalRounds: (activeEvent.totalRounds || 0) + 1
+          });
+          alert('¡Ronda extra añadida con éxito!');
+        } else {
+          alert('Contraseña incorrecta.');
+        }
+      };
+
       if (!activeEvent && userRole === ROLES.ADMIN) {
         return html`
           <div class="min-h-screen flex items-center justify-center px-6 pt-20">
@@ -750,8 +995,12 @@
                   <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Cantidad de Cartones</label>
                   <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
                 </div>
+                <div class="space-y-2">
+                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Número de Jugadas (Rondas)</label>
+                  <input type="number" value=${totalRounds} onChange=${e => setTotalRounds(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+                </div>
               </div>
-              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">Inicializar Sistema</button>
+              <button onClick=${() => onCreateEvent(eventName, cardCount, totalRounds)} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">Inicializar Sistema</button>
             </div>
           </div>
         `;
@@ -779,6 +1028,10 @@
               </div>
               
               <div class="text-center space-y-4">
+                <div class="flex items-center justify-center gap-4">
+                  <span class="text-amber-500/40 font-black text-xs uppercase tracking-[0.4em]">Jugada ${activeEvent.currentRound} de ${activeEvent.totalRounds}</span>
+                  <button onClick=${handleAddExtraRound} class="w-6 h-6 rounded-full bg-white/5 hover:bg-amber-500 hover:text-deep-bg transition-all flex items-center justify-center text-xs" title="Añadir Ronda Extra">+</button>
+                </div>
                 <p class="text-slate-500 font-black uppercase tracking-[0.4em] text-[10px]">Número Extraído</p>
                 <div class="w-72 h-72 rounded-full gold-gradient-bg p-1 shadow-[0_0_60px_rgba(212,175,55,0.3)]">
                   <div class="w-full h-full rounded-full bg-slate-950 flex items-center justify-center border-8 border-white/5">
@@ -832,6 +1085,39 @@
           </div>
 
           <div class="space-y-8">
+            <div class="glass-card p-8 rounded-[2.5rem] space-y-8">
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Validación de Ganadores</h3>
+              <div class="space-y-4">
+                <div class="flex gap-2">
+                  <input type="text" value=${validateCardId} onChange=${e => setValidateCardId(e.target.value)} placeholder="ID O # CARTÓN" class="flex-1 bg-black/40 border border-slate-800 rounded-xl p-3 text-white font-bold outline-none focus:border-emerald-500" />
+                  <button onClick=${() => handleValidateWinner(validateCardId)} class="bg-emerald-600 text-white px-4 rounded-xl hover:bg-emerald-500 transition-colors uppercase text-[10px] font-black">Validar</button>
+                </div>
+
+                ${winnerCandidates.length > 0 && html`
+                  <div class="space-y-3 pt-4 border-t border-slate-800">
+                    <p class="text-[10px] font-black text-amber-500 uppercase tracking-widest">Candidatos al Trono</p>
+                    ${winnerCandidates.map((c, i) => html`
+                      <div key=${c.id} class="bg-black/60 p-4 rounded-2xl border ${i === 0 ? 'border-amber-500 shadow-[0_0_15px_rgba(212,175,55,0.2)]' : 'border-slate-800'} space-y-3">
+                        <div class="flex justify-between items-start">
+                          <div>
+                            <p class="text-white font-black text-sm uppercase">${c.playerName}</p>
+                            <p class="text-[10px] text-slate-500 font-bold">Mesa #${c.cardNumber}</p>
+                          </div>
+                          <div class="text-right">
+                            <p class="${i === 0 ? 'text-amber-500' : 'text-slate-400'} font-black text-lg italic">${c.speed}s</p>
+                            <p class="text-[8px] text-slate-600 uppercase font-black">Velocidad</p>
+                          </div>
+                        </div>
+                        <button onClick=${() => handleFinalizeEvent(c)} class="w-full py-2 ${i === 0 ? 'bg-amber-500 text-deep-bg' : 'bg-slate-800 text-white'} rounded-xl font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">
+                          Declarar Ganador
+                        </button>
+                      </div>
+                    `)}
+                  </div>
+                `}
+              </div>
+            </div>
+
             <div class="glass-card p-8 rounded-[2.5rem] space-y-8">
               <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Métricas de Gala</h3>
               <div class="space-y-4">
