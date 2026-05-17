@@ -145,7 +145,7 @@
   <div id="root"></div>
 
   <script type="module">
-    import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18';
+    import React, { useState, useEffect, useMemo, useCallback, useRef } from 'https://esm.sh/react@18';
     import ReactDOM from 'https://esm.sh/react-dom@18/client';
     import htm from 'https://esm.sh/htm';
     
@@ -927,33 +927,25 @@
         const email = `${userClean}${SYSTEM_DOMAIN}`;
 
         try {
-          // 1. BYPASS TOTAL PARA ADMIN (admin/admin) - No depende de configuración Firebase Console
+          // 1. BYPASS TOTAL PARA ADMIN (admin/admin)
           if (userClean === 'admin' && passClean === 'admin') {
-            console.warn("Senior Bypass: Acceso de emergencia detectado.");
-            
-            // Asegurarnos de tener una sesión (aunque sea anónima) para tener un UID
             let currentUid = auth.currentUser?.uid;
-            if (!currentUid) {
-              const anon = await signInAnonymously(auth);
-              currentUid = anon.user.uid;
+            if (!currentUid || auth.currentUser.isAnonymous) {
+              const res = await signInAnonymously(auth);
+              currentUid = res.user.uid;
             }
-
-            // Forzar rol en base de datos para este UID
             await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', currentUid), { 
               role: ROLES.ADMIN,
               isEmergency: true,
               lastAccess: Date.now()
             }, { merge: true });
-
-            // Persistencia local para recargas de página
             localStorage.setItem('royale_admin_bypass', 'true');
-            
             setUserRole(ROLES.ADMIN);
             navigate('/admin');
             return true;
           }
 
-          // 2. Lógica para Staff con Validación Firestore (Bypass de auth/operation-not-allowed)
+          // 2. BYPASS TOTAL PARA STAFF (Validación vía Firestore)
           const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
             where('username', '==', userClean), 
             where('password', '==', passClean)));
@@ -961,19 +953,23 @@
           if (!staffSnap.empty) {
             let currentUid = auth.currentUser?.uid;
             if (!currentUid) {
-              const anon = await signInAnonymously(auth);
-              currentUid = anon.user.uid;
+              const res = await signInAnonymously(auth);
+              currentUid = res.user.uid;
             }
-
-            await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', currentUid), { role: ROLES.STAFF }, { merge: true });
+            
+            // Vincular UID anónimo al documento de staff para persistencia
             await updateDoc(staffSnap.docs[0].ref, { uid: currentUid });
+            await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', currentUid), { 
+              role: ROLES.STAFF,
+              username: userClean
+            }, { merge: true });
             
             setUserRole(ROLES.STAFF);
             navigate('/staff');
             return true;
           }
 
-          // 3. Intento de Auth Tradicional (Solo si Email/Password está habilitado)
+          // 3. Fallback: Intento de Auth Tradicional (Solo si está habilitado)
           try {
             const res = await signInWithEmailAndPassword(auth, email, passClean);
             const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
@@ -983,17 +979,13 @@
               navigate(role === ROLES.ADMIN ? '/admin' : '/staff');
               return true;
             }
-          } catch (authErr) {
-            if (authErr.code === 'auth/operation-not-allowed') {
-              console.error("Firebase Console: Debes habilitar 'Correo electrónico/contraseña' en Authentication > Sign-in method.");
-            }
-            throw authErr;
+          } catch (e) {
+            if (e.code !== 'auth/operation-not-allowed') throw e;
           }
 
           return false;
         } catch (error) {
           console.error("Auth System Error:", error);
-          // Si el error es por configuración de Firebase, pero son credenciales válidas en Firestore, ya lo manejamos arriba.
           return false;
         }
       };
@@ -1591,35 +1583,34 @@
             </div>
 
             ${userRole === ROLES.ADMIN && html`
-              <div class="glass-card p-10 rounded-[3rem] space-y-8">
-                <h3 class="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-4">
-                  <div class="w-2 h-10 bg-amber-500 rounded-full"></div> Gestión de Staff
-                </h3>
-                <div class="flex gap-4">
-                  <input type="email" value=${collabEmail} onChange=${e => setCollabEmail(e.target.value)} placeholder="EMAIL@ROYALE.COM" class="flex-1 bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500" />
-                  <button onClick=${handleAddStaff} class="bg-white text-black font-black px-10 rounded-2xl hover:bg-slate-200 transition-colors uppercase text-xs tracking-widest">Añadir</button>
+              <div class="glass-card p-10 rounded-[3rem] border-indigo-500/20 space-y-8">
+                <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Gestión de Staff</h3>
+                <div class="space-y-4">
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Usuario</label>
+                      <input type="text" value=${staffUser} onChange=${e => setStaffUser(e.target.value)} placeholder="usuario" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-indigo-500 transition-all" />
+                    </div>
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Contraseña</label>
+                      <input type="text" value=${staffPass} onChange=${e => setStaffPass(e.target.value)} placeholder="clave123" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-indigo-500 transition-all" />
+                    </div>
+                  </div>
+                  <button onClick=${handleAddStaff} class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-lg transition transform active:scale-95 uppercase tracking-widest text-[10px]">Añadir Colaborador</button>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+                <div class="space-y-4 pt-6 border-t border-white/5">
                   ${collabs.map(c => html`
-                    <div key=${c.id} class="bg-black/40 p-6 rounded-[2rem] border border-slate-800 flex justify-between items-center group hover:border-amber-500/50 transition-colors">
-                      <div class="space-y-1">
-                        <div class="flex items-center gap-2">
-                          <p class="text-white font-bold text-sm">${c.email}</p>
-                          <span class="w-2 h-2 rounded-full ${c.uid ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}"></span>
-                        </div>
-                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">${c.uid ? 'Vinculado' : 'Pendiente'}</p>
-                        <div class="flex gap-3 pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button onClick=${() => { navigator.clipboard.writeText(getStaffInviteUrl(c.email)); alert('Enlace VIP Copiado'); }} class="text-[8px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center gap-1">
-                            <span>🔗</span> Invitación
-                          </button>
-                          <button onClick=${() => handleDeleteStaff(c.id)} class="text-[8px] font-black text-rose-500 hover:text-rose-400 uppercase tracking-widest flex items-center gap-1">
-                            <span>✕</span> Eliminar
-                          </button>
-                        </div>
+                    <div key=${c.id} class="bg-black/40 p-5 rounded-2xl border border-slate-800 flex justify-between items-center group">
+                      <div class="text-left">
+                        <p class="text-white font-bold text-sm">${c.username}</p>
+                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">${c.role === ROLES.ADMIN ? 'Administrador' : 'Staff'}</p>
                       </div>
-                      <div class="text-right">
-                        <p class="text-amber-500 font-black text-2xl tracking-widest">${c.code}</p>
-                        <p class="text-[8px] text-slate-600 font-black uppercase">Auth Code</p>
+                      <div class="flex items-center gap-4">
+                        <div class="text-right">
+                          <p class="text-indigo-400 font-black text-xs tracking-widest">${c.password}</p>
+                        </div>
+                        <button onClick=${() => handleDeleteStaff(c.id)} class="text-rose-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
                       </div>
                     </div>
                   `)}
@@ -1707,34 +1698,63 @@
     }
 
     function ScannerView({ user, onActivateCard }) {
-      const [log, setLog] = useState({ text: 'ESPERANDO TOKEN QR...', type: 'info' });
+      const [log, setLog] = useState({ text: 'INICIALIZANDO CÁMARA...', type: 'info' });
       const [history, setHistory] = useState([]);
       const [myStaffData, setMyStaffData] = useState(null);
+      const scannerRef = useRef(null);
 
       useEffect(() => {
-        // En el nuevo sistema, el UID ya está vinculado al login
+        if (!user?.uid) return;
         return onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), (s) => {
           const found = s.docs.find(d => d.data().uid === user.uid);
           if(found) setMyStaffData({id: found.id, ...found.data()});
         });
-      }, [user]);
+      }, [user?.uid]);
 
       useEffect(() => {
-        const scanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 280 }, false);
-        scanner.render(async (text) => {
-          scanner.pause();
-          setLog({ text: 'VERIFICANDO...', type: 'info' });
-          const res = await onActivateCard(text);
-          
-          if (res.success) {
-            VoiceService.playSuccess();
-            setHistory(prev => [{ id: text, time: new Date().toLocaleTimeString(), msg: res.msg }, ...prev].slice(0, 5));
+        let isMounted = true;
+        const startScanner = async () => {
+          try {
+            if (!scannerRef.current) {
+              scannerRef.current = new Html5QrcodeScanner("qr-reader", { 
+                fps: 10, 
+                qrbox: { width: 250, height: 250 },
+                aspectRatio: 1.0
+              }, false);
+            }
+            
+            scannerRef.current.render(async (text) => {
+              if (!isMounted) return;
+              setLog({ text: 'VERIFICANDO TOKEN...', type: 'info' });
+              
+              const res = await onActivateCard(text);
+              if (res.success) {
+                VoiceService.playSuccess();
+                setHistory(prev => [{ id: text, time: new Date().toLocaleTimeString(), msg: res.msg }, ...prev].slice(0, 5));
+              }
+              
+              setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : 'error' });
+            }, (err) => {
+              // Ignorar errores de escaneo fallido (ruido)
+            });
+            
+            if (isMounted) setLog({ text: 'ESPERANDO CÓDIGO QR...', type: 'info' });
+          } catch (err) {
+            console.error("Scanner Init Error:", err);
+            if (isMounted) setLog({ text: 'ERROR AL INICIAR CÁMARA', type: 'error' });
           }
-          
-          setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : 'error' });
-          setTimeout(() => scanner.resume(), 2000);
-        }, () => {});
-        return () => scanner.clear().catch(() => {});
+        };
+
+        // Pequeño delay para asegurar que el DOM esté listo
+        const timer = setTimeout(startScanner, 500);
+        
+        return () => {
+          isMounted = false;
+          clearTimeout(timer);
+          if (scannerRef.current) {
+            scannerRef.current.clear().catch(e => console.warn("Scanner cleanup error:", e));
+          }
+        };
       }, [onActivateCard]);
 
       return html`
@@ -1742,7 +1762,9 @@
           <div class="gold-gradient-bg p-10 rounded-[3rem] text-deep-bg shadow-2xl space-y-2 relative overflow-hidden">
             <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
             <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Operador Autorizado</p>
-            <h3 class="text-4xl font-black tracking-tight leading-none">${user.displayName || user.email.split('@')[0].toUpperCase()}</h3>
+            <h3 class="text-4xl font-black tracking-tight leading-none">
+              ${myStaffData?.username?.toUpperCase() || 'COLABORADOR'}
+            </h3>
           </div>
 
           <div class="glass-card p-10 rounded-[3rem] space-y-8 text-center border-emerald-500/20">
@@ -1751,7 +1773,9 @@
               <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación de Cartones</p>
             </div>
             
-            <div id="qr-reader" class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner"></div>
+            <div class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner relative">
+              <div id="qr-reader" class="w-full"></div>
+            </div>
             
             <div class="p-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 border
               ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 
