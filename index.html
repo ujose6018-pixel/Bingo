@@ -914,46 +914,62 @@
           // 1. BYPASS DE SEGURIDAD PARA ADMIN (admin/admin)
           if (userClean === 'admin' && passClean === 'admin') {
             try {
-              // Intentar login con Firebase
               const res = await signInWithEmailAndPassword(auth, email, passClean);
               await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN }, { merge: true });
               setUserRole(ROLES.ADMIN);
+              navigate('/admin'); // Redirección automática
               return true;
             } catch (error) {
-              // Si no existe, crearlo
               if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 const res = await createUserWithEmailAndPassword(auth, email, passClean);
                 await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
                 setUserRole(ROLES.ADMIN);
+                navigate('/admin'); // Redirección automática
                 return true;
               }
-              // Si el usuario existe pero la clave es distinta en Firebase (auth/wrong-password)
-              // o cualquier otro error, usamos el UID actual para no bloquear el acceso.
               if (auth.currentUser) {
                 await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', auth.currentUser.uid), { role: ROLES.ADMIN });
                 setUserRole(ROLES.ADMIN);
+                navigate('/admin'); // Redirección automática
                 return true;
               }
             }
           }
 
-          // 2. Login para Staff y otros usuarios
-          const res = await signInWithEmailAndPassword(auth, email, passClean);
-          // Verificar rol en Firestore
-          const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
-          if (uSnap.exists()) {
-            setUserRole(uSnap.data().role);
-            return true;
-          }
-          
-          // Fallback para Staff creados manualmente en la colección 'staff'
-          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
-            where('username', '==', userClean), 
-            where('password', '==', passClean)));
-          
-          if (!staffSnap.empty) {
-            setUserRole(ROLES.STAFF);
-            return true;
+          // 2. Lógica para Staff
+          // Primero intentar login en Firebase Auth
+          try {
+            const res = await signInWithEmailAndPassword(auth, email, passClean);
+            const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
+            if (uSnap.exists()) {
+              const role = uSnap.data().role;
+              setUserRole(role);
+              navigate(role === ROLES.ADMIN ? '/admin' : '/staff');
+              return true;
+            }
+          } catch (e) {
+            // Si no está en Auth, buscar en la colección manual de Staff (Firestore)
+            const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
+              where('username', '==', userClean), 
+              where('password', '==', passClean)));
+            
+            if (!staffSnap.empty) {
+              const staffData = staffSnap.docs[0].data();
+              setUserRole(ROLES.STAFF);
+              navigate('/staff'); // Redirección automática a Staff
+              
+              // Auto-registrar en Auth para persistencia
+              try {
+                const res = await createUserWithEmailAndPassword(auth, email, passClean);
+                await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', staffSnap.docs[0].id), { uid: res.user.uid });
+                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.STAFF });
+              } catch (err) {
+                if (err.code === 'auth/email-already-in-use') {
+                  await signInWithEmailAndPassword(auth, email, passClean);
+                }
+              }
+              return true;
+            }
           }
 
           return false;
