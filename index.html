@@ -150,7 +150,7 @@
     import htm from 'https://esm.sh/htm';
     
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut, signInWithEmailAndPassword, createUserWithEmailAndPassword } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const html = htm.bind(React.createElement);
@@ -167,6 +167,7 @@
 
     const APP_NAMESPACE = 'bingo_royale_enterprise_final';
     const ROLES = { ADMIN: 'super_admin', STAFF: 'staff_collab', PLAYER: 'player_user' };
+    const SYSTEM_DOMAIN = '@royale.internal';
 
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
@@ -739,6 +740,48 @@
       `;
     }
 
+    function AdminStaffLogin({ onLogin, type }) {
+      const [user, setUser] = useState('');
+      const [pass, setPass] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        const success = await onLogin(user, pass);
+        if (!success) alert('Credenciales Inválidas');
+        setLoading(false);
+      };
+
+      return html`
+        <div class="min-h-screen flex items-center justify-center p-6 bg-black">
+          <form onSubmit=${handleSubmit} class="max-w-md w-full glass-card p-12 rounded-[3.5rem] border-amber-500/30 space-y-8 fade-up text-center">
+            <div class="space-y-2">
+              <span class="text-amber-500 font-black text-[10px] uppercase tracking-[0.5em]">Acceso de Seguridad</span>
+              <h2 class="bingo-title text-4xl italic">${type === 'admin' ? 'ADMIN CONSOLE' : 'STAFF TERMINAL'}</h2>
+            </div>
+            
+            <div class="space-y-6 text-left">
+              <div class="space-y-2">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Usuario</label>
+                <input type="text" required value=${user} onChange=${e => setUser(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+              </div>
+              <div class="space-y-2">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Contraseña</label>
+                <input type="password" required value=${pass} onChange=${e => setPass(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+              </div>
+            </div>
+
+            <button type="submit" disabled=${loading} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">
+              ${loading ? 'VALIDANDO...' : 'ENTRAR AL SISTEMA'}
+            </button>
+            
+            <p class="text-[8px] text-slate-700 font-black uppercase tracking-[0.3em]">Protocolo Multi-Dispositivo Royale</p>
+          </form>
+        </div>
+      `;
+    }
+
     function SharedCardView({ cardId, events, cards, activeEvent }) {
       const card = useMemo(() => cards.find(c => c.id === cardId), [cards, cardId]);
       const event = useMemo(() => events.find(e => e.id === card?.eventId), [events, card]);
@@ -822,17 +865,21 @@
           } else {
             setUser(u);
             const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
-            const snap = await getDocs(usersRef);
-            if(snap.empty) {
-              await setDoc(doc(usersRef, u.uid), { role: ROLES.ADMIN });
-              setUserRole(ROLES.ADMIN);
-            } else {
-              const uSnap = await getDoc(doc(usersRef, u.uid));
-              if(uSnap.exists()) setUserRole(uSnap.data().role);
-              else {
-                const sSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
-                if(!sSnap.empty) setUserRole(ROLES.STAFF);
+            const uSnap = await getDoc(doc(usersRef, u.uid));
+            
+            if (uSnap.exists()) {
+              setUserRole(uSnap.data().role);
+            } else if (u.email && u.email.endsWith(SYSTEM_DOMAIN)) {
+              // Si es un email del dominio interno, buscar en la colección de staff/admin
+              const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
+              if (!staffSnap.empty) {
+                setUserRole(staffSnap.docs[0].data().role || ROLES.STAFF);
+              } else {
+                // Caso especial para el admin de emergencia si no está en la colección pero tiene el email
+                if (u.email === `admin${SYSTEM_DOMAIN}`) setUserRole(ROLES.ADMIN);
               }
+            } else {
+              setUserRole(ROLES.PLAYER);
             }
             setLoading(false);
           }
@@ -858,6 +905,45 @@
       }, [events, eventSlug]);
 
       // Actions
+      const handleSystemLogin = async (username, password) => {
+        const email = `${username.toLowerCase()}${SYSTEM_DOMAIN}`;
+        try {
+          // 1. Intentar Login Directo (Admin o Staff ya registrado)
+          await signInWithEmailAndPassword(auth, email, password);
+          return true;
+        } catch (error) {
+          // 2. Si es Admin de Emergencia y no existe
+          if (username === 'admin' && password === 'admin123' && (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password')) {
+            try {
+              const res = await createUserWithEmailAndPassword(auth, email, password);
+              await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
+              return true;
+            } catch (e) {
+              // Si ya existe pero el error fue wrong-password, el admin real cambió la clave
+              if (error.code === 'auth/wrong-password') return false;
+            }
+          }
+          
+          // 3. Verificar si es un Staff creado por el Admin en Firestore
+          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('username', '==', username), where('password', '==', password)));
+          if (!staffSnap.empty) {
+            try {
+              // Auto-registrar en Firebase Auth para persistencia de sesión
+              const res = await createUserWithEmailAndPassword(auth, email, password);
+              await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', staffSnap.docs[0].id), { uid: res.user.uid });
+              return true;
+            } catch (e) {
+              // Si ya existía en Auth, solo loguear
+              if (e.code === 'auth/email-already-in-use') {
+                await signInWithEmailAndPassword(auth, email, password);
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+      };
+
       const handleLoginGoogle = async () => {
         // DETECCIÓN SENIOR DE ORIGEN INVÁLIDO (file://)
         if (window.location.protocol === 'file:') {
@@ -891,6 +977,13 @@
 
       const handleCreateEvent = async (name, count, rounds) => {
         const batch = writeBatch(db);
+        
+        // Finalizar eventos activos previos para empezar de 0
+        const activeEvents = events.filter(e => e.status === 'active');
+        activeEvents.forEach(e => {
+          batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', e.id), { status: 'finished', finishedAt: Date.now() });
+        });
+
         const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
         const eventData = { 
           name: name || 'Gala Bingo Royale', 
@@ -900,24 +993,43 @@
           totalRounds: Number(rounds) || 5,
           currentRound: 1,
           winnersHistory: JSON.stringify([]),
-          createdAt: Date.now() 
+          createdAt: Date.now(),
+          slug: Math.random().toString(36).substring(2, 8)
         };
         batch.set(eRef, eventData);
-        for(let i=1; i<=count; i++) {
-          const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
-          batch.set(cRef, { 
-            eventId: eRef.id, 
-            cardNumber: i, 
-            numbers: JSON.stringify(BingoEngine.generateCard()), 
-            status: 'available', 
-            playerId: null, 
-            playerName: null, 
+
+        // Resetear todos los cartones existentes o crear nuevos
+        // Para asegurar "desde 0", eliminamos los vínculos previos
+        cards.forEach(c => {
+          batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', c.id), {
+            status: 'available',
+            playerId: null,
+            playerName: null,
             markTimes: JSON.stringify({}),
-            createdAt: Date.now() 
+            sharedAlias: null,
+            eventId: eRef.id // Vincular al nuevo evento
           });
+        });
+
+        // Si faltan cartones para llegar a 'count', crearlos
+        if (cards.length < count) {
+          for(let i = cards.length + 1; i <= count; i++) {
+            const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
+            batch.set(cRef, { 
+              eventId: eRef.id, 
+              cardNumber: i, 
+              numbers: JSON.stringify(BingoEngine.generateCard()), 
+              status: 'available', 
+              playerId: null, 
+              playerName: null, 
+              markTimes: JSON.stringify({}),
+              createdAt: Date.now() 
+            });
+          }
         }
+
         await batch.commit();
-        alert('Evento Creado. Comparte el enlace del jugador.');
+        alert('Gala Reiniciada. Todo el sistema está en 0 para el nuevo evento.');
       };
 
       const handleReserveCard = async (cardId, name) => {
@@ -1005,7 +1117,7 @@
           ${type === 'shared_card' ? html`<${SharedCardView} cardId=${routeInfo.cardId} events=${events} cards=${cards} activeEvent=${activeEvent} />` : null}
           ${type === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} />` : null}
           ${type === 'admin' ? (
-            userRole !== ROLES.ADMIN ? html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO</div>` : 
+            userRole !== ROLES.ADMIN ? html`<${AdminStaffLogin} onLogin=${handleSystemLogin} type="admin" />` : 
             html`
               <div class="view-container">
                 <${Navbar} setView=${(v) => navigate('/' + v)} currentView="admin" userRole=${userRole} />
@@ -1025,11 +1137,11 @@
             `
           ) : null}
           ${type === 'staff' ? (
-            (userRole !== ROLES.ADMIN && userRole !== ROLES.STAFF) ? html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO</div>` :
+            (userRole !== ROLES.ADMIN && userRole !== ROLES.STAFF) ? html`<${AdminStaffLogin} onLogin=${handleSystemLogin} type="staff" />` :
             html`
               <div class="view-container">
                 <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} />
-                <${ScannerView} user=${user} onActivateCard=${handleActivateCard} prefilledEmail=${email} />
+                <${ScannerView} user=${user} onActivateCard=${handleActivateCard} />
               </div>
             `
           ) : null}
@@ -1081,6 +1193,9 @@
       const [validateCardId, setValidateCardId] = useState('');
       const [showDashboard, setShowDashboard] = useState(false);
 
+      const [staffUser, setStaffUser] = useState('');
+      const [staffPass, setStaffPass] = useState('');
+
       const activeEvents = useMemo(() => events.filter(e => e.status === 'active'), [events]);
       const finishedEvents = useMemo(() => events.filter(e => e.status === 'finished').sort((a,b) => b.finishedAt - a.finishedAt), [events]);
 
@@ -1098,14 +1213,24 @@
       }, [userRole]);
 
       const handleAddStaff = async () => {
-        if(!collabEmail.trim()) return;
-        const ref = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'));
-        await setDoc(ref, {
-          email: collabEmail.trim(),
-          code: Math.random().toString(36).substring(2, 8).toUpperCase(),
-          createdAt: Date.now()
-        });
-        setCollabEmail('');
+        if(!staffUser.trim() || !staffPass.trim()) return;
+        const email = `${staffUser.toLowerCase()}${SYSTEM_DOMAIN}`;
+        try {
+          // Nota: Crear usuario en Firebase Auth requiere Admin SDK o hacerlo vía cliente si no hay sesión activa.
+          // Para esta SPA, guardaremos las credenciales en Firestore y el staff se "auto-registrará" al primer login exitoso
+          // o simplemente usaremos el registro directo si el Admin lo crea.
+          // Una forma "Senior" es usar una Cloud Function, pero aquí lo haremos vía Firestore para simplicidad de despliegue.
+          const ref = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'));
+          await setDoc(ref, {
+            username: staffUser.trim(),
+            password: staffPass.trim(), // En una app real esto iría hasheado
+            role: ROLES.STAFF,
+            createdAt: Date.now()
+          });
+          setStaffUser('');
+          setStaffPass('');
+          alert(`Staff ${staffUser} creado con éxito.`);
+        } catch (e) { console.error(e); }
       };
 
       const handleDeleteStaff = async (id) => {
@@ -1193,13 +1318,27 @@
         const newHistory = [...currentHistory, winnerData];
 
         if (isLastRound) {
-          // Finalizar Gala
-          await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+          // Finalizar Gala: Limpiar estados activos
+          const batch = writeBatch(db);
+          batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
             status: 'finished',
             finishedAt: Date.now(),
             winnersHistory: JSON.stringify(newHistory),
-            winner: JSON.stringify(winnerData) // Último ganador para el overlay rápido
+            winner: JSON.stringify(winnerData)
           });
+          
+          // Al finalizar, todos los cartones vuelven a 'available' para el siguiente evento
+          // o se quedan marcados como finalizados. El usuario pidió limpiar.
+          cards.forEach(c => {
+            batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', c.id), {
+              status: 'available',
+              playerId: null,
+              playerName: null,
+              markTimes: JSON.stringify({}),
+              sharedAlias: null
+            });
+          });
+          await batch.commit();
         } else {
           // Siguiente Ronda
           const batch = writeBatch(db);
@@ -1210,8 +1349,7 @@
           });
           
           // Resetear marcados de cartones para la nueva ronda
-          const activeCards = cards.filter(c => c.status === 'active' || c.status === 'reserved');
-          activeCards.forEach(c => {
+          cards.forEach(c => {
             batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', c.id), {
               markTimes: JSON.stringify({})
             });
@@ -1298,7 +1436,42 @@
                   </div>
                 </div>
 
-                <!-- HISTORIAL -->
+                <!-- STAFF MANAGEMENT -->
+              <div class="glass-card p-10 rounded-[3rem] border-indigo-500/20 space-y-8">
+                <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Gestión de Staff</h3>
+                <div class="space-y-4">
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Usuario</label>
+                      <input type="text" value=${staffUser} onChange=${e => setStaffUser(e.target.value)} placeholder="usuario" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-indigo-500 transition-all" />
+                    </div>
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-indigo-400 uppercase tracking-widest ml-1">Contraseña</label>
+                      <input type="text" value=${staffPass} onChange=${e => setStaffPass(e.target.value)} placeholder="clave123" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-indigo-500 transition-all" />
+                    </div>
+                  </div>
+                  <button onClick=${handleAddStaff} class="w-full py-4 bg-indigo-600 hover:bg-indigo-500 text-white font-black rounded-2xl shadow-lg transition transform active:scale-95 uppercase tracking-widest text-[10px]">Añadir Colaborador</button>
+                </div>
+
+                <div class="space-y-4 pt-6 border-t border-white/5">
+                  ${collabs.map(c => html`
+                    <div key=${c.id} class="bg-black/40 p-5 rounded-2xl border border-slate-800 flex justify-between items-center group">
+                      <div class="text-left">
+                        <p class="text-white font-bold text-sm">${c.username}</p>
+                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">${c.role === ROLES.ADMIN ? 'Administrador' : 'Staff'}</p>
+                      </div>
+                      <div class="flex items-center gap-4">
+                        <div class="text-right">
+                          <p class="text-indigo-400 font-black text-xs tracking-widest">${c.password}</p>
+                        </div>
+                        <button onClick=${() => handleDeleteStaff(c.id)} class="text-rose-500 hover:text-rose-400 opacity-0 group-hover:opacity-100 transition-opacity">✕</button>
+                      </div>
+                    </div>
+                  `)}
+                </div>
+              </div>
+
+              <!-- HISTORIAL -->
                 <div class="space-y-6">
                   <h3 class="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Historial de Galas Finalizadas</h3>
                   <div class="space-y-4">
@@ -1478,26 +1651,18 @@
       `;
     }
 
-    function ScannerView({ user, onActivateCard, prefilledEmail }) {
+    function ScannerView({ user, onActivateCard }) {
       const [log, setLog] = useState({ text: 'ESPERANDO TOKEN QR...', type: 'info' });
       const [history, setHistory] = useState([]);
       const [myStaffData, setMyStaffData] = useState(null);
-      const [emailLink, setEmailLink] = useState(prefilledEmail || '');
 
       useEffect(() => {
+        // En el nuevo sistema, el UID ya está vinculado al login
         return onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), (s) => {
           const found = s.docs.find(d => d.data().uid === user.uid);
           if(found) setMyStaffData({id: found.id, ...found.data()});
         });
       }, [user]);
-
-      const handleLink = async () => {
-        const q = query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('email', '==', emailLink.trim()));
-        const s = await getDocs(q);
-        if(s.empty) return alert('Este email no ha sido autorizado por la administración.');
-        await updateDoc(s.docs[0].ref, { uid: user.uid });
-        alert('Identidad de Staff vinculada.');
-      };
 
       useEffect(() => {
         const scanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 280 }, false);
@@ -1519,25 +1684,16 @@
 
       return html`
         <div class="min-h-screen pt-32 pb-20 px-6 max-w-2xl mx-auto space-y-8 fade-up">
-          ${!myStaffData ? html`
-            <div class="glass-card p-12 rounded-[3rem] text-center space-y-8 border-amber-500/30">
-              <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic">Validación Staff</h3>
-              <p class="text-slate-400 text-sm">Vincula tu cuenta con el email autorizado para acceder.</p>
-              <input type="email" value=${emailLink} onChange=${e => setEmailLink(e.target.value)} placeholder="TU@ROYALE.COM" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500" />
-              <button onClick=${handleLink} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition uppercase tracking-widest text-xs">Vincular Identidad</button>
-            </div>
-          ` : html`
-            <div class="gold-gradient-bg p-10 rounded-[3rem] text-deep-bg shadow-2xl space-y-2 relative overflow-hidden">
-              <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
-              <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Código de Autorización de Mesa</p>
-              <h3 class="text-7xl font-black tracking-[0.5em] leading-none">${myStaffData.code}</h3>
-            </div>
-          `}
+          <div class="gold-gradient-bg p-10 rounded-[3rem] text-deep-bg shadow-2xl space-y-2 relative overflow-hidden">
+            <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
+            <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Operador Autorizado</p>
+            <h3 class="text-4xl font-black tracking-tight leading-none">${user.displayName || user.email.split('@')[0].toUpperCase()}</h3>
+          </div>
 
           <div class="glass-card p-10 rounded-[3rem] space-y-8 text-center border-emerald-500/20">
             <div class="space-y-1">
               <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Escáner de Recepción</h3>
-              <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación Biométrica de Cartones</p>
+              <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación de Cartones</p>
             </div>
             
             <div id="qr-reader" class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner"></div>
