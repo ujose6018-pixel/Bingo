@@ -269,6 +269,8 @@
       const [currentPage, setCurrentPage] = useState(0);
 
       const myCards = useMemo(() => cards.filter(c => c.playerId === user?.uid), [cards, user]);
+      const activeCards = useMemo(() => myCards.filter(c => c.status === 'active'), [myCards]);
+      const reservedCards = useMemo(() => myCards.filter(c => c.status === 'reserved'), [myCards]);
       const availableCards = useMemo(() => cards.filter(c => c.status === 'available').sort((a,b) => a.cardNumber - b.cardNumber), [cards]);
 
       const pageSize = 10;
@@ -315,6 +317,153 @@
         `;
       }
 
+      // FULLSCREEN GAME MODE IF CARD IS ACTIVE
+      if (activeCards.length > 0) {
+        return html`
+          <div class="view-container bg-[#05070a] min-h-screen">
+            <nav class="p-6 flex justify-between items-center">
+              <div class="flex items-center gap-4">
+                <span class="text-2xl">👑</span>
+                <span class="bingo-title text-xl font-black italic tracking-tighter">ROYALE PLAY</span>
+              </div>
+              <div class="flex items-center gap-4">
+                <div class="text-right hidden sm:block">
+                  <p class="text-white font-black text-xs uppercase">${user.displayName}</p>
+                  <p class="text-amber-500 font-black text-[8px] uppercase tracking-widest">Jugador Senior</p>
+                </div>
+                <img src=${user.photoURL} class="w-10 h-10 rounded-xl border border-amber-500/30" />
+                <button onClick=${onLogout} class="p-2 hover:bg-rose-500/10 text-rose-500 rounded-xl transition-all">
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                  </svg>
+                </button>
+              </div>
+            </nav>
+
+            <div class="max-w-4xl mx-auto px-4 pb-20 space-y-8">
+              ${activeCards.map(card => {
+                const matrix = JSON.parse(card.numbers);
+                const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
+                
+                return html`
+                  <div key=${card.id} class="space-y-6 animate-in fade-in zoom-in duration-500">
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-4 bg-amber-500/5 p-6 rounded-[2rem] border border-amber-500/10">
+                      <div class="text-center sm:text-left">
+                        <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.4em]">Evento: ${activeEvent.name}</p>
+                        <h2 class="text-3xl font-black text-white uppercase tracking-tighter italic">Mesa Royale #${card.cardNumber}</h2>
+                      </div>
+                      <div class="flex items-center gap-4">
+                        <div class="text-center px-6 py-2 bg-black/40 rounded-2xl border border-white/5">
+                          <p class="text-slate-500 text-[8px] font-black uppercase">Ronda</p>
+                          <p class="text-xl font-black text-white">${activeEvent.currentRound} / ${activeEvent.totalRounds}</p>
+                        </div>
+                        <button onClick=${() => setShowChangeModal(true)} class="px-6 py-3 bg-rose-500/10 hover:bg-rose-500 text-rose-500 hover:text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all">
+                          Abandonar
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- ULTIMO NUMERO SORTEADO (MINI DISPLAY) -->
+                    <div class="glass-card p-6 rounded-[2.5rem] flex items-center justify-between border-amber-500/20">
+                      <p class="text-slate-400 font-black text-[10px] uppercase tracking-widest">Última Balota:</p>
+                      <div class="flex items-center gap-4">
+                        <span class="text-4xl font-black text-amber-500 italic">
+                          ${activeEvent.drawnNumbers.length > 0 ? 
+                            `${BingoEngine.getLetter(activeEvent.drawnNumbers[activeEvent.drawnNumbers.length-1])} ${activeEvent.drawnNumbers[activeEvent.drawnNumbers.length-1]}` : 
+                            '--'}
+                        </span>
+                        <div class="w-2 h-2 rounded-full bg-amber-500 animate-ping"></div>
+                      </div>
+                    </div>
+
+                    <!-- CARTON GRANDE -->
+                    <div class="p-4 sm:p-10 rounded-[4rem] border-8 border-amber-500 bg-slate-900 shadow-[0_0_100px_rgba(212,175,55,0.15)] space-y-8 relative overflow-hidden">
+                      <div class="absolute inset-0 bg-gradient-to-br from-amber-500/5 via-transparent to-transparent pointer-events-none"></div>
+                      
+                      <div class="grid grid-cols-5 gap-3 sm:gap-6 relative z-10">
+                        ${['B','I','N','G','O'].map(l => html`
+                          <div class="aspect-square flex items-center justify-center text-3xl sm:text-5xl font-black text-amber-500/10 italic">${l}</div>
+                        `)}
+                        
+                        ${matrix.map((row, rIdx) => row.map((cell, cIdx) => {
+                          const isFree = cell === 'FREE';
+                          // FIX: Comparación numérica robusta
+                          const cellNum = isFree ? null : Number(cell);
+                          const isDrawn = isFree || (cellNum && activeEvent.drawnNumbers.includes(cellNum));
+                          const isMarked = markTimes[cell] || isFree;
+                          
+                          const toggleMark = async () => {
+                            if (!isDrawn) {
+                              const letter = ['B','I','N','G','O'][cIdx];
+                              VoiceService.speak(`El ${letter} ${cell} no ha salido`, 1);
+                              return;
+                            }
+                            
+                            const newMarkTimes = { ...markTimes };
+                            if (newMarkTimes[cell]) delete newMarkTimes[cell];
+                            else newMarkTimes[cell] = Date.now();
+
+                            // Sincronización senior sin manipulación manual de clases
+                            await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', card.id), {
+                              markTimes: JSON.stringify(newMarkTimes)
+                            });
+                            
+                            if (!isMarked) VoiceService.playSuccess();
+                          };
+
+                          return html`
+                            <div 
+                              onClick=${toggleMark} 
+                              class="bingo-cell cursor-pointer text-xl sm:text-4xl border-2 transition-all duration-300 transform active:scale-90
+                                ${isMarked ? 
+                                  'bg-amber-500 text-deep-bg border-amber-300 shadow-[0_0_30px_rgba(212,175,55,0.4)] rotate-3' : 
+                                  isDrawn ? 
+                                    'bg-amber-500/10 text-amber-500 border-amber-500/30 animate-pulse' : 
+                                    'bg-white/5 text-slate-700 border-white/5 hover:border-white/20'}"
+                            >
+                              ${isFree ? '★' : cell}
+                            </div>
+                          `;
+                        }))}
+                      </div>
+
+                      <div class="flex justify-between items-center pt-4 border-t border-white/5 relative z-10">
+                         <div class="flex items-center gap-2">
+                           <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                           <p class="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Conectado a la Tómbola Royale</p>
+                         </div>
+                         <p class="text-[10px] font-black text-slate-500 uppercase tracking-widest">ID: ${card.id.substring(0,8)}</p>
+                      </div>
+                    </div>
+
+                    <button onClick=${() => onShareCard(card.id)} class="w-full py-5 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-400 hover:text-white rounded-3xl text-xs font-black uppercase tracking-widest transition-all border border-indigo-500/20">
+                      Compartir con un Invitado
+                    </button>
+                  </div>
+                `;
+              })}
+            </div>
+
+            <!-- MODAL CAMBIO (DENTRO DE FULLSCREEN) -->
+            ${showChangeModal && html`
+              <div class="fixed inset-0 z-[600] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/90">
+                <div class="max-w-md w-full glass-card p-12 rounded-[3.5rem] space-y-8 animate-in zoom-in duration-300 border-rose-500/20">
+                  <div class="text-center space-y-2">
+                    <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic text-rose-500">Autorizar Salida</h3>
+                    <p class="text-slate-400 text-sm">Pide al staff el código de liberación para volver a la selección de cartones.</p>
+                  </div>
+                  <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="000000" class="w-full bg-black/60 border border-slate-800 rounded-3xl p-6 text-center text-5xl font-black tracking-[0.5em] text-amber-500 outline-none focus:border-amber-500 transition-all" />
+                  <div class="flex gap-4">
+                    <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-4 font-black text-slate-500 hover:text-white transition uppercase text-[10px] tracking-widest">Cerrar</button>
+                    <button onClick=${async () => { if(await onRequestChange(activeCards[0].id, changeCode)) setShowChangeModal(false); }} class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg transition uppercase text-[10px] tracking-widest">Liberar Cartón</button>
+                  </div>
+                </div>
+              </div>
+            `}
+          </div>
+        `;
+      }
+
       return html`
         <div class="view-container pt-24 pb-24 px-6 max-w-7xl mx-auto space-y-12">
           <!-- CABECERA DEL EVENTO Y PERFIL -->
@@ -335,110 +484,26 @@
             </div>
           </div>
 
-          <!-- APARTADO: MIS CARTONES (BILLETERA) -->
-          ${myCards.length > 0 ? html`
+          <!-- APARTADO: MIS CARTONES RESERVADOS (PENDIENTES DE QR) -->
+          ${reservedCards.length > 0 ? html`
             <div class="space-y-6 fade-up">
               <div class="flex items-center gap-4">
                 <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
-                <h3 class="text-xs font-black text-amber-500 uppercase tracking-[0.3em]">Mis Cartones Seleccionados</h3>
+                <h3 class="text-xs font-black text-amber-500 uppercase tracking-[0.3em]">Mis Reservas Pendientes</h3>
                 <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
               </div>
               
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                ${myCards.map(card => html`
-                  <div key=${card.id} class="glass-card p-4 rounded-2xl border-amber-500/20 hover:border-amber-500 transition-all cursor-pointer group text-center space-y-3 relative">
-                    <div onClick=${() => setQrModalCard(card)} class="space-y-3">
+                ${reservedCards.map(card => html`
+                  <div key=${card.id} onClick=${() => setQrModalCard(card)} class="glass-card p-6 rounded-[2.5rem] border-amber-500/20 hover:border-amber-500 transition-all cursor-pointer group text-center space-y-4 relative">
+                    <div class="space-y-2">
                       <p class="text-[10px] font-black text-slate-500 group-hover:text-amber-500 transition-colors uppercase">Mesa #${card.cardNumber}</p>
-                      <div class="w-10 h-10 mx-auto bg-amber-500/10 rounded-xl flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-deep-bg transition-all">📱</div>
-                      <p class="text-[8px] font-bold ${card.status === 'active' ? 'text-emerald-500' : 'text-amber-500'} uppercase tracking-widest">${card.status === 'active' ? 'Activo' : 'Pendiente'}</p>
+                      <div class="w-12 h-12 mx-auto bg-amber-500/10 rounded-2xl flex items-center justify-center text-2xl group-hover:bg-amber-500 group-hover:text-deep-bg transition-all animate-bounce">📱</div>
+                      <p class="text-[8px] font-bold text-amber-500 uppercase tracking-widest">Toca para Activar</p>
                     </div>
-                    <button onClick=${(e) => { e.stopPropagation(); onShareCard(card.id); }} class="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-400 hover:text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-all">
-                      Compartir
-                    </button>
-                    ${card.sharedAlias && html`
-                      <p class="text-[7px] text-indigo-300 font-bold uppercase truncate px-2">Alias: ${card.sharedAlias}</p>
-                    `}
                   </div>
                 `)}
               </div>
-            </div>
-          ` : null}
-
-          <!-- VISTA DE JUEGO PARA CARTONES SELECCIONADOS -->
-          ${myCards.length > 0 ? html`
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-10">
-              ${myCards.map(card => {
-                const matrix = JSON.parse(card.numbers);
-                return html`
-                  <div key=${card.id} class="space-y-6 fade-up">
-                    <div class="flex justify-between items-end px-4">
-                      <div class="space-y-1">
-                        <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Mesa Royale #${card.cardNumber}</p>
-                        <h2 class="text-3xl font-black text-white uppercase tracking-tighter">${card.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
-                      </div>
-                      <button onClick=${() => { setShowChangeModal(true); }} class="text-[10px] font-black text-slate-600 hover:text-rose-500 transition-colors uppercase tracking-widest">Abandonar</button>
-                    </div>
-
-                    <div class="p-8 rounded-[3rem] border-4 ${card.status === 'active' ? 'border-amber-500' : 'border-slate-800'} bg-slate-900 shadow-2xl space-y-8 relative overflow-hidden">
-                      ${card.status !== 'active' && html`<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-20 flex items-center justify-center text-center p-8">
-                        <p class="text-white font-black uppercase tracking-[0.2em] text-sm">Esperando Validación Staff<br/><span class="text-amber-500 text-[10px]">Abre el QR para autorizar</span></p>
-                      </div>`}
-                      
-                      <div class="flex justify-between items-center relative z-10">
-                        <span class="bingo-title text-2xl font-black italic">BINGO</span>
-                        <div class="text-right">
-                          <p class="text-amber-500 font-black text-[8px] uppercase tracking-widest">Titular</p>
-                          <p class="text-white font-black text-lg uppercase tracking-tighter">${card.playerName}</p>
-                        </div>
-                      </div>
-
-                      <div class="grid grid-cols-5 gap-2 relative z-10">
-                        ${['B','I','N','G','O'].map(l => html`
-                          <div class="aspect-square flex items-center justify-center text-xl font-black text-amber-500/20">${l}</div>
-                        `)}
-                        ${matrix.map(row => row.map((cell, cellIdx) => {
-                          const isFree = cell === 'FREE';
-                          const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
-                          const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
-                          const isMarkedExternally = markTimes[cell] || isFree;
-                          
-                          const toggleMark = async (e) => {
-                            if (card.status !== 'active') return;
-                            if (!isDrawn && !isFree) {
-                              const letter = ['B','I','N','G','O'][cellIdx];
-                              VoiceService.speak(`El número ${letter} ${cell} aún no ha sido sorteado`, 1);
-                              return;
-                            }
-                            
-                            const isMarked = e.target.classList.contains('bingo-cell-marked');
-                            const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
-                            
-                            if (!isMarked) {
-                              markTimes[cell] = Date.now();
-                            } else {
-                              delete markTimes[cell];
-                            }
-
-                            e.target.classList.toggle('bingo-cell-marked');
-                            e.target.classList.toggle('active-number-glow');
-
-                            // Sincronizar con Firestore para auditoría senior
-                            await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', card.id), {
-                              markTimes: JSON.stringify(markTimes)
-                            });
-                          };
-
-                          return html`
-                            <div onClick=${toggleMark} class="bingo-cell cursor-pointer ${isMarkedExternally ? 'bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}">
-                              ${isFree ? '★' : cell}
-                            </div>
-                          `;
-                        }))}
-                      </div>
-                    </div>
-                  </div>
-                `;
-              })}
             </div>
           ` : null}
 
@@ -510,23 +575,6 @@
               </div>
             </div>
           ` : null}
-
-          <!-- MODAL CAMBIO (EXISTENTE) -->
-          ${showChangeModal && html`
-            <div class="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/80">
-              <div class="max-w-md w-full glass-card p-12 rounded-[3.5rem] space-y-8 fade-up border-rose-500/20">
-                <div class="text-center space-y-2">
-                  <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic text-rose-500">Autorizar Salida</h3>
-                  <p class="text-slate-400 text-sm">Pide al staff el código de liberación para volver a la selección de cartones.</p>
-                </div>
-                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="000000" class="w-full bg-black/60 border border-slate-800 rounded-3xl p-6 text-center text-5xl font-black tracking-[0.5em] text-amber-500 outline-none focus:border-amber-500 transition-all" />
-                <div class="flex gap-4">
-                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-4 font-black text-slate-500 hover:text-white transition uppercase text-[10px] tracking-widest">Cerrar</button>
-                  <button onClick=${async () => { if(await onRequestChange(myCards[0].id, changeCode)) setShowChangeModal(false); }} class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg transition uppercase text-[10px] tracking-widest">Liberar Cartón</button>
-                </div>
-              </div>
-            </div>
-          `}
         </div>
       `;
     }
@@ -1119,22 +1167,72 @@
       };
 
       const handleReserveCard = async (cardId, name) => {
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'reserved', playerId: user.uid, playerName: name, reservedAt: Date.now() });
-      };
+        // Verificar si el usuario tiene pre-autorización (por un Cambio de Cartón previo)
+        const userSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid));
+        const isPreAuthorized = userSnap.exists() && userSnap.data().preAuthorized === true;
 
-      const handleRequestChange = async (cardId, code) => {
-        const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
-        if(s.empty) { alert('Código de Staff Inválido'); return false; }
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
-        return true;
+        const newStatus = isPreAuthorized ? 'active' : 'reserved';
+        
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { 
+          status: newStatus, 
+          playerId: user.uid, 
+          playerName: name, 
+          reservedAt: Date.now() 
+        });
+
+        // Consumir la pre-autorización si existía
+        if (isPreAuthorized) {
+          await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { 
+            preAuthorized: false 
+          });
+        }
       };
 
       const handleActivateCard = async (id) => {
         const c = cards.find(x => x.id === id);
         if(!c) return { success: false, msg: 'Error: Cartón no registrado' };
+        if(c.status === 'active') return { success: false, msg: 'YA SE ACTIVÓ EL CARTÓN' };
         await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', id), { status: 'active' });
         return { success: true, msg: '¡Acceso Concedido!' };
       };
+
+      const handleGenerateChangeCode = async () => {
+        const code = Math.floor(100000 + Math.random() * 900000).toString();
+        if (activeEvent) {
+          const currentCodes = activeEvent.tempChangeCodes ? JSON.parse(activeEvent.tempChangeCodes) : [];
+          const newCodes = [...currentCodes, { code, createdAt: Date.now() }];
+          await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+            tempChangeCodes: JSON.stringify(newCodes)
+          });
+          return code;
+        }
+        return null;
+      };
+
+      const handleRequestChange = async (cardId, code) => {
+         if (activeEvent && activeEvent.tempChangeCodes) {
+           const tempCodes = JSON.parse(activeEvent.tempChangeCodes);
+           const foundIdx = tempCodes.findIndex(c => c.code === code);
+           if (foundIdx !== -1) {
+             const newCodes = tempCodes.filter((_, i) => i !== foundIdx);
+             await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+               tempChangeCodes: JSON.stringify(newCodes)
+             });
+             // Liberar cartón actual
+             await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+             // Marcar al usuario como "pre-autorizado" para el cambio (sin QR)
+             await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
+             return true;
+           }
+         }
+         const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
+         if(!s.empty) { 
+           await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+           return true; 
+         }
+         alert('Código Inválido o Expirado');
+         return false;
+       };
 
       const handleDrawNumber = async () => {
         const available = Array.from({length:75}, (_,i)=>i+1).filter(n => !activeEvent.drawnNumbers.includes(n));
@@ -1227,7 +1325,11 @@
             html`
               <div class="view-container">
                 <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} onLogout=${handleLogout} />
-                <${ScannerView} user=${user} onActivateCard=${handleActivateCard} />
+                <${ScannerView} 
+                  user=${user} 
+                  onActivateCard=${handleActivateCard} 
+                  onGenerateChangeCode=${handleGenerateChangeCode}
+                />
               </div>
             `
           ) : null}
@@ -1736,10 +1838,11 @@
       `;
     }
 
-    function ScannerView({ user, onActivateCard }) {
+    function ScannerView({ user, onActivateCard, onGenerateChangeCode }) {
       const [log, setLog] = useState({ text: 'INICIALIZANDO CÁMARA...', type: 'info' });
       const [history, setHistory] = useState([]);
       const [myStaffData, setMyStaffData] = useState(null);
+      const [tempCode, setTempCode] = useState(null);
       const scannerRef = useRef(null);
 
       useEffect(() => {
@@ -1755,10 +1858,16 @@
         const startScanner = async () => {
           try {
             if (!scannerRef.current) {
+              // OPTIMIZACIÓN MÓVIL SENIOR: Ajuste de parámetros para pantalla completa
               scannerRef.current = new Html5QrcodeScanner("qr-reader", { 
-                fps: 10, 
-                qrbox: { width: 250, height: 250 },
-                aspectRatio: 1.0
+                fps: 15, 
+                qrbox: (viewfinderWidth, viewfinderHeight) => {
+                  const minEdge = Math.min(viewfinderWidth, viewfinderHeight);
+                  const size = Math.floor(minEdge * 0.7);
+                  return { width: size, height: size };
+                },
+                aspectRatio: window.innerWidth < 640 ? (window.innerHeight / window.innerWidth) : 1.0,
+                showTorchButtonIfSupported: true
               }, false);
             }
             
@@ -1772,9 +1881,9 @@
                 setHistory(prev => [{ id: text, time: new Date().toLocaleTimeString(), msg: res.msg }, ...prev].slice(0, 5));
               }
               
-              setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : 'error' });
+              setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : (res.msg === 'YA SE ACTIVÓ EL CARTÓN' ? 'warning' : 'error') });
             }, (err) => {
-              // Ignorar errores de escaneo fallido (ruido)
+              // Ignorar ruidos
             });
             
             if (isMounted) setLog({ text: 'ESPERANDO CÓDIGO QR...', type: 'info' });
@@ -1784,7 +1893,6 @@
           }
         };
 
-        // Pequeño delay para asegurar que el DOM esté listo
         const timer = setTimeout(startScanner, 500);
         
         return () => {
@@ -1796,51 +1904,107 @@
         };
       }, [onActivateCard]);
 
+      const generateCode = async () => {
+        const code = await onGenerateChangeCode();
+        setTempCode(code);
+        setTimeout(() => setTempCode(null), 60000); // El código expira visualmente en 1 min
+      };
+
       return html`
-        <div class="min-h-screen pt-32 pb-20 px-6 max-w-2xl mx-auto space-y-8 fade-up">
-          <div class="gold-gradient-bg p-10 rounded-[3rem] text-deep-bg shadow-2xl space-y-2 relative overflow-hidden">
-            <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
-            <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Operador Autorizado</p>
-            <h3 class="text-4xl font-black tracking-tight leading-none">
-              ${myStaffData?.username?.toUpperCase() || 'COLABORADOR'}
-            </h3>
-          </div>
-
-          <div class="glass-card p-10 rounded-[3rem] space-y-8 text-center border-emerald-500/20">
-            <div class="space-y-1">
-              <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Escáner de Recepción</h3>
-              <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación de Cartones</p>
-            </div>
-            
-            <div class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner relative">
-              <div id="qr-reader" class="w-full"></div>
-            </div>
-            
-            <div class="p-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 border
-              ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 
-                log.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 
-                'bg-black/40 text-slate-500 border-slate-800'}">
-              ${log.text}
+        <div class="min-h-screen bg-[#05070a] pt-24 pb-20">
+          <div class="max-w-2xl mx-auto px-6 space-y-8 fade-up">
+            <!-- STAFF HEADER -->
+            <div class="gold-gradient-bg p-8 rounded-[2.5rem] text-deep-bg shadow-2xl flex justify-between items-center relative overflow-hidden">
+              <div class="absolute top-0 right-0 p-4 opacity-10">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-24 w-24" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                </svg>
+              </div>
+              <div class="space-y-1">
+                <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Operador Royale</p>
+                <h3 class="text-3xl font-black tracking-tight">${myStaffData?.username?.toUpperCase() || 'COLABORADOR'}</h3>
+              </div>
+              <div class="bg-black/20 px-4 py-2 rounded-xl border border-black/10">
+                <p class="text-[8px] font-black uppercase">Estatus</p>
+                <p class="text-xs font-black">EN LÍNEA</p>
+              </div>
             </div>
 
-            ${history.length > 0 && html`
-              <div class="pt-6 space-y-3">
-                <p class="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] text-left ml-2">Últimos Validados</p>
-                <div class="space-y-2">
-                  ${history.map(h => html`
-                    <div key=${h.id} class="bg-black/20 p-4 rounded-xl border border-slate-800 flex justify-between items-center animate-in slide-in-from-left duration-300">
-                      <div class="text-left">
-                        <p class="text-emerald-500 font-bold text-xs">${h.msg}</p>
-                        <p class="text-[8px] text-slate-600 uppercase">${h.time}</p>
+            <!-- CAMBIO DE CARTÓN SECTION -->
+            <div class="glass-card p-8 rounded-[2.5rem] border-indigo-500/20 space-y-6">
+              <div class="flex justify-between items-center">
+                <div class="space-y-1">
+                  <h4 class="text-white font-black text-lg uppercase tracking-tighter italic">Cambio de Cartón</h4>
+                  <p class="text-slate-500 text-[8px] font-black uppercase tracking-widest">Liberación de Mesa para Jugador</p>
+                </div>
+                <button onClick=${generateCode} class="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-[10px] font-black uppercase tracking-widest transition-all shadow-lg active:scale-95">
+                  Generar Código
+                </button>
+              </div>
+
+              ${tempCode && html`
+                <div class="bg-indigo-500/10 border border-indigo-500/30 p-6 rounded-2xl text-center space-y-2 animate-in slide-in-from-top duration-300">
+                  <p class="text-indigo-400 text-[10px] font-black uppercase tracking-[0.3em]">Código de Uso Único</p>
+                  <p class="text-5xl font-black text-white tracking-[0.2em] italic">${tempCode}</p>
+                  <p class="text-indigo-400/60 text-[8px] font-black uppercase">Expira en 60 segundos</p>
+                </div>
+              `}
+            </div>
+
+            <!-- SCANNER SECTION -->
+            <div class="glass-card p-4 sm:p-10 rounded-[3rem] space-y-8 text-center border-emerald-500/20 relative overflow-hidden">
+              <div class="space-y-1">
+                <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Escáner de Recepción</h3>
+                <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación de Cartones Royale</p>
+              </div>
+              
+              <div class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-2xl relative aspect-square max-w-sm mx-auto">
+                <div id="qr-reader" class="w-full h-full"></div>
+                <!-- OVERLAY SENIOR -->
+                <div class="absolute inset-0 pointer-events-none border-[40px] border-black/40">
+                  <div class="w-full h-full border-2 border-emerald-500/30 rounded-3xl relative">
+                    <div class="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-emerald-500 rounded-tl-xl"></div>
+                    <div class="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-emerald-500 rounded-tr-xl"></div>
+                    <div class="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-emerald-500 rounded-bl-xl"></div>
+                    <div class="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-emerald-500 rounded-br-xl"></div>
+                  </div>
+                </div>
+              </div>
+              
+              <div class="p-6 rounded-2xl font-black text-sm uppercase tracking-[0.2em] transition-all duration-500 border shadow-lg
+                ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-emerald-500/10' : 
+                  log.type === 'warning' ? 'bg-amber-500/10 text-amber-500 border-amber-500/30 shadow-amber-500/10' :
+                  log.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30 shadow-rose-500/10' : 
+                  'bg-black/40 text-slate-500 border-slate-800'}">
+                ${log.text}
+              </div>
+
+              ${history.length > 0 && html`
+                <div class="pt-6 space-y-4">
+                  <p class="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] text-left ml-2">Bitácora de Acceso</p>
+                  <div class="space-y-3">
+                    ${history.map(h => html`
+                      <div key=${h.id} class="bg-black/40 p-5 rounded-2xl border border-slate-800 flex justify-between items-center animate-in slide-in-from-left duration-300 group hover:border-emerald-500/30 transition-all">
+                        <div class="text-left">
+                          <p class="text-emerald-500 font-black text-xs uppercase italic">${h.msg}</p>
+                          <p class="text-[8px] text-slate-600 font-black uppercase tracking-widest mt-1">${h.time} • TOKEN: ${h.id.substring(0,8)}</p>
+                        </div>
+                        <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center text-emerald-500">✓</div>
                       </div>
-                      <div class="text-emerald-500 text-lg">✓</div>
-                    </div>
-                  `)}
+                    `)}
                 </div>
               </div>
             `}
           </div>
         </div>
+      </div>
+      <style>
+        #qr-reader { border: none !important; }
+        #qr-reader__dashboard { display: none !important; }
+        #qr-reader__status_span { display: none !important; }
+        #qr-reader video { border-radius: 2rem; object-fit: cover !important; }
+        #qr-reader__scan_region { background: transparent !important; }
+      </style>
       `;
     }
 
