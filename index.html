@@ -913,7 +913,7 @@
           return true;
         } catch (error) {
           // 2. Si es Admin de Emergencia y no existe
-          if (username === 'admin' && password === 'admin123' && (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password')) {
+          if (username === 'admin' && password === 'admin' && (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password')) {
             try {
               const res = await createUserWithEmailAndPassword(auth, email, password);
               await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
