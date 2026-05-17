@@ -120,7 +120,7 @@
     
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-    import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+    import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const html = htm.bind(React.createElement);
 
@@ -185,10 +185,13 @@
 
       const routeInfo = useMemo(() => {
         const cleanPath = path.replace('#', '');
-        const segments = cleanPath.split('/').filter(Boolean);
+        const [rawPath, queryString] = cleanPath.split('?');
+        const segments = rawPath.split('/').filter(Boolean);
+        const queryParams = new URLSearchParams(queryString || '');
         
         if (segments[0] === 'admin') return { type: 'admin' };
-        if (segments[0] === 'staff') return { type: 'staff' };
+        if (segments[0] === 'staff') return { type: 'staff', email: queryParams.get('email') };
+        if (segments[0] === 'display') return { type: 'display' };
         if (segments.length > 0) return { type: 'player', eventSlug: segments[0] };
         return { type: 'home' };
       }, [path]);
@@ -229,33 +232,128 @@
       const [name, setName] = useState('');
       const [showChangeModal, setShowChangeModal] = useState(false);
       const [changeCode, setChangeCode] = useState('');
+      const [qrModalCard, setQrModalCard] = useState(null);
 
       const myCards = useMemo(() => cards.filter(c => c.playerId === user?.uid), [cards, user]);
       const availableCards = useMemo(() => cards.filter(c => c.status === 'available').sort((a,b) => a.cardNumber - b.cardNumber), [cards]);
 
       if (!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase animate-pulse">Esperando Apertura de Mesa Royale...</div>`;
 
-      if (myCards.length === 0) {
-        return html`
-          <div class="view-container pt-24 pb-20 px-6 max-w-7xl mx-auto space-y-12">
-            <div class="text-center space-y-4">
-              <h2 class="text-6xl font-black text-white uppercase tracking-tighter italic">${activeEvent.name}</h2>
-              <div class="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
-                <span class="text-amber-500 font-black tracking-widest text-[10px] uppercase">Gala Privada en Curso</span>
+      return html`
+        <div class="view-container pt-24 pb-24 px-6 max-w-7xl mx-auto space-y-12">
+          <!-- CABECERA DEL EVENTO -->
+          <div class="text-center space-y-4">
+            <h2 class="text-6xl font-black text-white uppercase tracking-tighter italic">${activeEvent.name}</h2>
+            <div class="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
+              <span class="text-amber-500 font-black tracking-widest text-[10px] uppercase">Gala Privada en Curso</span>
+            </div>
+          </div>
+
+          <!-- APARTADO: MIS CARTONES (BILLETERA) -->
+          ${myCards.length > 0 ? html`
+            <div class="space-y-6 fade-up">
+              <div class="flex items-center gap-4">
+                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+                <h3 class="text-xs font-black text-amber-500 uppercase tracking-[0.3em]">Mis Cartones Seleccionados</h3>
+                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+              </div>
+              
+              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                ${myCards.map(card => html`
+                  <div key=${card.id} onClick=${() => setQrModalCard(card)} class="glass-card p-4 rounded-2xl border-amber-500/20 hover:border-amber-500 transition-all cursor-pointer group text-center space-y-3">
+                    <p class="text-[10px] font-black text-slate-500 group-hover:text-amber-500 transition-colors uppercase">Mesa #${card.cardNumber}</p>
+                    <div class="w-10 h-10 mx-auto bg-amber-500/10 rounded-xl flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-deep-bg transition-all">📱</div>
+                    <p class="text-[8px] font-bold ${card.status === 'active' ? 'text-emerald-500' : 'text-amber-500'} uppercase tracking-widest">${card.status === 'active' ? 'Activo' : 'Pendiente'}</p>
+                  </div>
+                `)}
               </div>
             </div>
+          ` : null}
 
-            <div class="max-w-md mx-auto glass-card p-8 rounded-[2.5rem] space-y-6">
-              <div class="space-y-2 text-center">
-                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Identificación del Invitado</label>
-                <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="NOMBRE COMPLETO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-5 text-center text-white font-black outline-none focus:border-amber-500 transition-all uppercase tracking-widest" />
-                <p class="text-[9px] text-slate-600 italic">Escribe tu nombre para habilitar la selección de mesa.</p>
-              </div>
+          <!-- VISTA DE JUEGO PARA CARTONES SELECCIONADOS -->
+          ${myCards.length > 0 ? html`
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12 pt-10">
+              ${myCards.map(card => {
+                const matrix = JSON.parse(card.numbers);
+                return html`
+                  <div key=${card.id} class="space-y-6 fade-up">
+                    <div class="flex justify-between items-end px-4">
+                      <div class="space-y-1">
+                        <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Mesa Royale #${card.cardNumber}</p>
+                        <h2 class="text-3xl font-black text-white uppercase tracking-tighter">${card.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
+                      </div>
+                      <button onClick=${() => { setShowChangeModal(true); }} class="text-[10px] font-black text-slate-600 hover:text-rose-500 transition-colors uppercase tracking-widest">Abandonar</button>
+                    </div>
+
+                    <div class="p-8 rounded-[3rem] border-4 ${card.status === 'active' ? 'border-amber-500' : 'border-slate-800'} bg-slate-900 shadow-2xl space-y-8 relative overflow-hidden">
+                      ${card.status !== 'active' && html`<div class="absolute inset-0 bg-black/60 backdrop-blur-[2px] z-20 flex items-center justify-center text-center p-8">
+                        <p class="text-white font-black uppercase tracking-[0.2em] text-sm">Esperando Validación Staff<br/><span class="text-amber-500 text-[10px]">Abre el QR para autorizar</span></p>
+                      </div>`}
+                      
+                      <div class="flex justify-between items-center relative z-10">
+                        <span class="bingo-title text-2xl font-black italic">BINGO</span>
+                        <div class="text-right">
+                          <p class="text-amber-500 font-black text-[8px] uppercase tracking-widest">Titular</p>
+                          <p class="text-white font-black text-lg uppercase tracking-tighter">${card.playerName}</p>
+                        </div>
+                      </div>
+
+                      <div class="grid grid-cols-5 gap-2 relative z-10">
+                        ${['B','I','N','G','O'].map(l => html`
+                          <div class="aspect-square flex items-center justify-center text-xl font-black text-amber-500/20">${l}</div>
+                        `)}
+                        ${matrix.map(row => row.map((cell, cellIdx) => {
+                          const isFree = cell === 'FREE';
+                          const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
+                          
+                          const toggleMark = (e) => {
+                            if (card.status !== 'active') return;
+                            if (!isDrawn && !isFree) {
+                              const letter = ['B','I','N','G','O'][cellIdx];
+                              VoiceService.speak(`El número ${letter} ${cell} aún no ha sido sorteado`, 1);
+                              return;
+                            }
+                            e.target.classList.toggle('bingo-cell-marked');
+                            e.target.classList.toggle('active-number-glow');
+                          };
+
+                          return html`
+                            <div onClick=${toggleMark} class="bingo-cell cursor-pointer ${isFree ? 'bingo-cell-free bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}">
+                              ${isFree ? '★' : cell}
+                            </div>
+                          `;
+                        }))}
+                      </div>
+                    </div>
+                  </div>
+                `;
+              })}
             </div>
+          ` : null}
 
-            ${name.trim().length > 3 ? html`
-              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                ${availableCards.map(card => html`<${MiniCard} key=${card.id} card=${card} onReserve=${onReserveCard} playerName=${name} />`)}
+          <!-- SELECCIÓN DE CARTONES -->
+          <div class="space-y-12">
+            ${myCards.length > 0 ? html`
+              <div class="flex items-center gap-4">
+                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+                <h3 class="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">¿Deseas más cartones?</h3>
+                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+              </div>
+            ` : null}
+
+            ${myCards.length === 0 ? html`
+              <div class="max-w-md mx-auto glass-card p-8 rounded-[2.5rem] space-y-6">
+                <div class="space-y-2 text-center">
+                  <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Identificación del Invitado</label>
+                  <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="NOMBRE COMPLETO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-5 text-center text-white font-black outline-none focus:border-amber-500 transition-all uppercase tracking-widest" />
+                  <p class="text-[9px] text-slate-600 italic">Escribe tu nombre para habilitar la selección de mesa.</p>
+                </div>
+              </div>
+            ` : null}
+
+            ${(name.trim().length > 3 || myCards.length > 0) ? html`
+              <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 opacity-60 hover:opacity-100 transition-opacity">
+                ${availableCards.slice(0, 16).map(card => html`<${MiniCard} key=${card.id} card=${card} onReserve=${onReserveCard} playerName=${name || myCards[0]?.playerName} />`)}
               </div>
             ` : html`
               <div class="text-center py-20 border-2 border-dashed border-slate-800 rounded-[3rem]">
@@ -263,90 +361,32 @@
               </div>
             `}
           </div>
-        `;
-      }
 
-      return html`
-        <div class="view-container pt-24 pb-24 px-6 flex flex-col items-center fade-up">
-          <div class="w-full max-w-2xl space-y-10">
-            ${myCards.map(card => {
-              const matrix = JSON.parse(card.numbers);
-              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${card.id}&color=05070a&bgcolor=ffffff`;
-              
-              return html`
-                <div key=${card.id} class="space-y-6">
-                  <div class="flex justify-between items-end px-4">
-                    <div class="space-y-1">
-                      <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Mesa Royale #${card.cardNumber}</p>
-                      <h2 class="text-4xl font-black text-white uppercase tracking-tighter">${card.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
-                    </div>
-                    <button onClick=${() => setShowChangeModal(true)} class="text-[10px] font-black text-slate-600 hover:text-rose-500 transition-colors uppercase tracking-widest">Abandonar Mesa</button>
+          <!-- VENTANA EMERGENTE QR (MODAL) -->
+          ${qrModalCard ? html`
+            <div class="fixed inset-0 z-[300] flex items-center justify-center p-6 backdrop-blur-3xl bg-black/90 animate-in fade-in duration-300" onClick=${() => setQrModalCard(null)}>
+              <div class="max-w-md w-full glass-card bg-white p-10 rounded-[3.5rem] text-center space-y-8 animate-in zoom-in duration-300" onClick=${e => e.stopPropagation()}>
+                <div class="flex justify-between items-start">
+                  <div class="text-left space-y-1">
+                    <p class="text-amber-600 text-[10px] font-black uppercase tracking-widest">Credencial Digital</p>
+                    <h3 class="text-3xl font-black text-slate-950 uppercase tracking-tighter">Mesa #${qrModalCard.cardNumber}</h3>
                   </div>
-
-                  ${card.status === 'reserved' ? html`
-                    <div class="glass-card bg-white p-12 rounded-[3.5rem] text-center space-y-10 animate-in zoom-in duration-500">
-                      <div class="space-y-3">
-                        <h3 class="text-4xl font-black text-slate-950 uppercase tracking-tighter">${card.playerName}</h3>
-                        <div class="inline-flex px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest">PASE DE ENTRADA VIP</div>
-                      </div>
-                      <div class="p-8 bg-slate-50 rounded-[3rem] inline-block border-2 border-slate-100 shadow-inner">
-                        <img src=${qrUrl} class="w-64 h-64 mix-blend-multiply" />
-                      </div>
-                      <p class="text-slate-400 text-xs font-medium px-8 leading-relaxed italic">Presenta este código al personal de staff para autorizar tu participación.</p>
-                    </div>
-                  ` : html`
-                    <div class="p-8 rounded-[3.5rem] border-4 border-amber-500 bg-slate-900 shadow-2xl space-y-8 relative overflow-hidden">
-                      <div class="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl"></div>
-                      
-                      <div class="flex justify-between items-center relative z-10">
-                        <span class="bingo-title text-3xl font-black italic">BINGO</span>
-                        <div class="text-right">
-                          <p class="text-amber-500 font-black text-[9px] uppercase tracking-widest">Titular</p>
-                          <p class="text-white font-black text-xl uppercase tracking-tighter">${card.playerName}</p>
-                        </div>
-                      </div>
-
-                  <div class="grid grid-cols-5 gap-3 relative z-10">
-                    ${['B','I','N','G','O'].map(l => html`
-                      <div class="aspect-square flex items-center justify-center text-2xl font-black text-amber-500/40">${l}</div>
-                    `)}
-                    ${matrix.map(row => row.map((cell, cellIdx) => {
-                      const isFree = cell === 'FREE';
-                      const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
-                      
-                      // Solo permitir marcar si el número ya fue sorteado
-                      const toggleMark = (e) => {
-                        if (!isDrawn && !isFree) {
-                          const letter = ['B','I','N','G','O'][cellIdx];
-                          VoiceService.speak(`El número ${letter} ${cell} aún no ha sido sorteado`, 1);
-                          return;
-                        }
-                        e.target.classList.toggle('bingo-cell-marked');
-                        e.target.classList.toggle('active-number-glow');
-                      };
-
-                      return html`
-                        <div 
-                          onClick=${toggleMark}
-                          class="bingo-cell cursor-pointer ${isFree ? 'bingo-cell-free bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}"
-                        >
-                          ${isFree ? '★' : cell}
-                        </div>
-                      `;
-                    }))}
-                  </div>
-
-                      <div class="flex justify-between items-center pt-4 border-t border-slate-800 text-[8px] font-black text-slate-600 tracking-[0.4em] uppercase relative z-10">
-                        <span>ROYALE SECURE: ${card.id.slice(-12).toUpperCase()}</span>
-                        <span>V5.2 FINAL</span>
-                      </div>
-                    </div>
-                  `}
+                  <button onClick=${() => setQrModalCard(null)} class="w-10 h-10 bg-slate-100 rounded-full flex items-center justify-center text-slate-400 hover:text-slate-900 transition-colors">✕</button>
                 </div>
-              `;
-            })}
-          </div>
+                
+                <div class="p-8 bg-slate-50 rounded-[3rem] inline-block border-2 border-slate-100 shadow-inner">
+                  <img src=${`https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${qrModalCard.id}&color=05070a&bgcolor=ffffff`} class="w-64 h-64 mix-blend-multiply" />
+                </div>
+                
+                <div class="space-y-4">
+                  <p class="text-slate-500 text-xs font-medium px-6 leading-relaxed italic">Presenta este código al staff para autorizar tu participación en la gala.</p>
+                  <div class="bg-amber-100 text-amber-700 py-3 rounded-2xl font-black text-[10px] uppercase tracking-[0.2em]">Invitado: ${qrModalCard.playerName}</div>
+                </div>
+              </div>
+            </div>
+          ` : null}
 
+          <!-- MODAL CAMBIO (EXISTENTE) -->
           ${showChangeModal && html`
             <div class="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/80">
               <div class="max-w-md w-full glass-card p-12 rounded-[3.5rem] space-y-8 fade-up border-rose-500/20">
@@ -366,33 +406,156 @@
       `;
     }
 
-    // --- VOICE SERVICE ---
+    // --- VOICE & AUDIO SERVICE ---
     const VoiceService = {
+      playSuccess: () => {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
+        osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
+        gain.gain.setValueAtTime(0.1, ctx.currentTime);
+        osc.start(); osc.stop(ctx.currentTime + 0.1);
+      },
       speak: (text, count = 1) => {
         if (!('speechSynthesis' in window)) return;
         window.speechSynthesis.cancel();
-        
         const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES';
-        utterance.rate = 0.9;
-        
+        utterance.lang = 'es-ES'; utterance.rate = 0.9;
         let repeated = 0;
         utterance.onend = () => {
           repeated++;
-          if (repeated < count) {
-            setTimeout(() => {
-              window.speechSynthesis.speak(utterance);
-            }, 500);
-          }
+          if (repeated < count) setTimeout(() => window.speechSynthesis.speak(utterance), 500);
         };
-        
         window.speechSynthesis.speak(utterance);
       }
     };
 
+    function Navbar({ setView, currentView, userRole }) {
+      return html`
+        <nav class="fixed top-0 left-0 right-0 z-[500] px-6 py-4">
+          <div class="max-w-7xl mx-auto glass-card rounded-2xl px-6 py-3 flex justify-between items-center border-amber-500/10">
+            <div class="flex items-center gap-4 cursor-pointer" onClick=${() => setView('')}>
+              <span class="text-2xl">👑</span>
+              <span class="bingo-title text-xl font-black italic tracking-tighter">ROYALE</span>
+            </div>
+            
+            <div class="flex items-center gap-2">
+              <button onClick=${() => setView('display')} class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentView === 'display' ? 'bg-amber-500 text-deep-bg' : 'text-slate-400 hover:text-white hover:bg-white/5'}">
+                Proyección
+              </button>
+              ${userRole === ROLES.ADMIN || userRole === ROLES.STAFF ? html`
+                <button onClick=${() => setView('staff')} class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentView === 'staff' ? 'bg-amber-500 text-deep-bg' : 'text-slate-400 hover:text-white hover:bg-white/5'}">
+                  Staff
+                </button>
+              ` : null}
+              ${userRole === ROLES.ADMIN ? html`
+                <button onClick=${() => setView('admin')} class="px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${currentView === 'admin' ? 'bg-amber-500 text-deep-bg' : 'text-slate-400 hover:text-white hover:bg-white/5'}">
+                  Admin
+                </button>
+              ` : null}
+            </div>
+          </div>
+        </nav>
+      `;
+    }
+
+    function DisplayView({ activeEvent }) {
+      if (!activeEvent) return html`<div class="min-h-screen bg-black flex items-center justify-center text-amber-500 font-black tracking-[0.5em] animate-pulse">CARGANDO TRANSMISIÓN ROYALE...</div>`;
+
+      const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1];
+      const history = [...activeEvent.drawnNumbers].reverse().slice(1, 6);
+      
+      return html`
+        <div class="min-h-screen bg-[#05070a] text-white p-8 flex flex-col gap-8 overflow-hidden">
+          <!-- TOP BAR -->
+          <div class="flex justify-between items-center border-b border-amber-500/20 pb-6">
+            <div class="space-y-1">
+              <h1 class="bingo-title text-5xl italic">${activeEvent.name}</h1>
+              <p class="text-amber-500/60 font-black text-xs uppercase tracking-[0.4em]">Sorteo Oficial en Tiempo Real</p>
+            </div>
+            <div class="text-right">
+              <div class="px-6 py-3 bg-amber-500/10 border border-amber-500/20 rounded-2xl inline-block">
+                <p class="text-amber-500 font-black text-[10px] uppercase tracking-widest">Modo de Juego</p>
+                <p class="text-2xl font-black text-white uppercase tracking-tighter italic">
+                  ${activeEvent.pattern === 'full' ? 'Cartón Lleno' : 
+                    activeEvent.pattern === 'line' ? 'Línea Recta' : 
+                    activeEvent.pattern === 'four_corners' ? '4 Esquinas' : 'Letra X'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex-1 grid grid-cols-12 gap-8 min-h-0">
+            <!-- LEFT: CURRENT NUMBER (4K OPTIMIZED) -->
+            <div class="col-span-5 flex flex-col gap-8">
+              <div class="flex-1 glass-card rounded-[4rem] border-amber-500/30 flex flex-col items-center justify-center relative overflow-hidden">
+                <div class="absolute inset-0 bg-gradient-to-b from-amber-500/5 to-transparent"></div>
+                <p class="text-amber-500 font-black text-xl uppercase tracking-[0.5em] mb-4">Última Balota</p>
+                <div class="relative">
+                  <div class="absolute inset-0 bg-amber-500 blur-[100px] opacity-20"></div>
+                  <span class="text-[20rem] font-black leading-none tracking-tighter italic drop-shadow-[0_0_50px_rgba(212,175,55,0.4)]">
+                    ${lastNumber ? html`
+                      <span class="text-amber-500/30 mr-[-0.1em]">${BingoEngine.getLetter(lastNumber)}</span>
+                      <span>${lastNumber}</span>
+                    ` : '--'}
+                  </span>
+                </div>
+              </div>
+
+              <!-- HISTORY -->
+              <div class="h-48 glass-card rounded-[3rem] p-8 flex flex-col justify-center">
+                <p class="text-slate-500 font-black text-[10px] uppercase tracking-[0.3em] mb-4">Anteriores</p>
+                <div class="flex gap-4">
+                  ${history.map((num, i) => html`
+                    <div key=${num} class="w-20 h-20 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center text-3xl font-black text-slate-400 opacity-${100 - (i * 20)}">
+                      ${num}
+                    </div>
+                  `)}
+                  ${history.length === 0 && html`<div class="text-slate-700 font-black italic tracking-widest uppercase">Iniciando gala...</div>`}
+                </div>
+              </div>
+            </div>
+
+            <!-- RIGHT: FULL BOARD -->
+            <div class="col-span-7 glass-card rounded-[4rem] p-10 flex flex-col border-amber-500/10">
+              <div class="grid grid-cols-16 gap-2 flex-1">
+                ${['B','I','N','G','O'].map(letter => {
+                  const range = letter === 'B' ? [1,15] : letter === 'I' ? [16,30] : letter === 'N' ? [31,45] : letter === 'G' ? [46,60] : [61,75];
+                  const nums = Array.from({length: 15}, (_, i) => range[0] + i);
+                  
+                  return html`
+                    <div class="contents">
+                      <div class="flex items-center justify-center font-black text-2xl text-amber-500/40 border-r border-amber-500/10 pr-2 mr-2">${letter}</div>
+                      ${nums.map(n => {
+                        const isDrawn = activeEvent.drawnNumbers.includes(n);
+                        const isLast = n === lastNumber;
+                        return html`
+                          <div key=${n} class="aspect-square rounded-xl flex items-center justify-center text-xl font-black transition-all duration-500
+                            ${isLast ? 'bg-amber-500 text-deep-bg scale-110 shadow-[0_0_20px_rgba(212,175,55,0.6)] z-10' : 
+                              isDrawn ? 'bg-amber-500/20 text-amber-500 border border-amber-500/30' : 
+                              'bg-white/5 text-slate-700 border border-white/5'}">
+                            ${n}
+                          </div>
+                        `;
+                      })}
+                    </div>
+                  `;
+                })}
+              </div>
+            </div>
+          </div>
+          
+          <style>
+            .grid-cols-16 { grid-template-columns: repeat(16, minmax(0, 1fr)); }
+          </style>
+        </div>
+      `;
+    }
+
     // --- MAIN APP ---
     function App() {
-      const { type, eventSlug, navigate, getCleanBaseUrl } = useRouting();
+      const { type, eventSlug, email, navigate, getCleanBaseUrl } = useRouting();
       const [user, setUser] = useState(null);
       const [userRole, setUserRole] = useState(ROLES.PLAYER);
       const [events, setEvents] = useState([]);
@@ -497,6 +660,10 @@
         </div>
       `;
 
+      if (type === 'display') {
+        return html`<${DisplayView} activeEvent=${activeEvent} />`;
+      }
+
       // SENIOR INTERFACE ISOLATION
       if (type === 'admin') {
         if (userRole !== ROLES.ADMIN) return html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO: NIVEL ADMIN REQUERIDO</div>`;
@@ -513,7 +680,7 @@
         return html`
           <div class="view-container">
             <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} />
-            <${ScannerView} user=${user} onActivateCard=${handleActivateCard} />
+            <${ScannerView} user=${user} onActivateCard=${handleActivateCard} prefilledEmail=${email} />
           </div>
         `;
       }
@@ -557,6 +724,16 @@
           createdAt: Date.now()
         });
         setCollabEmail('');
+      };
+
+      const handleDeleteStaff = async (id) => {
+        if(confirm('¿Eliminar acceso a este colaborador?')) {
+          await deleteDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', id));
+        }
+      };
+
+      const getStaffInviteUrl = (email) => {
+        return `${getCleanBaseUrl()}#/staff?email=${encodeURIComponent(email)}`;
       };
 
       if (!activeEvent && userRole === ROLES.ADMIN) {
@@ -629,8 +806,19 @@
                   ${collabs.map(c => html`
                     <div key=${c.id} class="bg-black/40 p-6 rounded-[2rem] border border-slate-800 flex justify-between items-center group hover:border-amber-500/50 transition-colors">
                       <div class="space-y-1">
-                        <p class="text-white font-bold text-sm">${c.email}</p>
-                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">Colaborador Oficial</p>
+                        <div class="flex items-center gap-2">
+                          <p class="text-white font-bold text-sm">${c.email}</p>
+                          <span class="w-2 h-2 rounded-full ${c.uid ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}"></span>
+                        </div>
+                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">${c.uid ? 'Vinculado' : 'Pendiente'}</p>
+                        <div class="flex gap-3 pt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button onClick=${() => { navigator.clipboard.writeText(getStaffInviteUrl(c.email)); alert('Enlace VIP Copiado'); }} class="text-[8px] font-black text-indigo-400 hover:text-indigo-300 uppercase tracking-widest flex items-center gap-1">
+                            <span>🔗</span> Invitación
+                          </button>
+                          <button onClick=${() => handleDeleteStaff(c.id)} class="text-[8px] font-black text-rose-500 hover:text-rose-400 uppercase tracking-widest flex items-center gap-1">
+                            <span>✕</span> Eliminar
+                          </button>
+                        </div>
                       </div>
                       <div class="text-right">
                         <p class="text-amber-500 font-black text-2xl tracking-widest">${c.code}</p>
@@ -688,10 +876,11 @@
       `;
     }
 
-    function ScannerView({ user, onActivateCard }) {
+    function ScannerView({ user, onActivateCard, prefilledEmail }) {
       const [log, setLog] = useState({ text: 'ESPERANDO TOKEN QR...', type: 'info' });
+      const [history, setHistory] = useState([]);
       const [myStaffData, setMyStaffData] = useState(null);
-      const [emailLink, setEmailLink] = useState('');
+      const [emailLink, setEmailLink] = useState(prefilledEmail || '');
 
       useEffect(() => {
         return onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), (s) => {
@@ -712,20 +901,26 @@
         const scanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 280 }, false);
         scanner.render(async (text) => {
           scanner.pause();
-          setLog({ text: 'VERIFICANDO CREDENCIAL...', type: 'info' });
+          setLog({ text: 'VERIFICANDO...', type: 'info' });
           const res = await onActivateCard(text);
+          
+          if (res.success) {
+            VoiceService.playSuccess();
+            setHistory(prev => [{ id: text, time: new Date().toLocaleTimeString(), msg: res.msg }, ...prev].slice(0, 5));
+          }
+          
           setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : 'error' });
-          setTimeout(() => scanner.resume(), 3000);
+          setTimeout(() => scanner.resume(), 2000);
         }, () => {});
         return () => scanner.clear().catch(() => {});
-      }, []);
+      }, [onActivateCard]);
 
       return html`
         <div class="min-h-screen pt-32 pb-20 px-6 max-w-2xl mx-auto space-y-8 fade-up">
           ${!myStaffData ? html`
             <div class="glass-card p-12 rounded-[3rem] text-center space-y-8 border-amber-500/30">
               <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic">Validación Staff</h3>
-              <p class="text-slate-400 text-sm">Vincula tu cuenta con el email autorizado por el Admin para acceder a las herramientas de validación.</p>
+              <p class="text-slate-400 text-sm">Vincula tu cuenta con el email autorizado para acceder.</p>
               <input type="email" value=${emailLink} onChange=${e => setEmailLink(e.target.value)} placeholder="TU@ROYALE.COM" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500" />
               <button onClick=${handleLink} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition uppercase tracking-widest text-xs">Vincular Identidad</button>
             </div>
@@ -734,7 +929,6 @@
               <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
               <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Código de Autorización de Mesa</p>
               <h3 class="text-7xl font-black tracking-[0.5em] leading-none">${myStaffData.code}</h3>
-              <p class="text-[9px] font-bold mt-6 opacity-50 uppercase tracking-widest">Proporciona este código al jugador solo bajo supervisión.</p>
             </div>
           `}
 
@@ -747,11 +941,28 @@
             <div id="qr-reader" class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner"></div>
             
             <div class="p-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 border
-              ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' : 
+              ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30' : 
                 log.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 
                 'bg-black/40 text-slate-500 border-slate-800'}">
               ${log.text}
             </div>
+
+            ${history.length > 0 && html`
+              <div class="pt-6 space-y-3">
+                <p class="text-[10px] font-black text-slate-600 uppercase tracking-[0.3em] text-left ml-2">Últimos Validados</p>
+                <div class="space-y-2">
+                  ${history.map(h => html`
+                    <div key=${h.id} class="bg-black/20 p-4 rounded-xl border border-slate-800 flex justify-between items-center animate-in slide-in-from-left duration-300">
+                      <div class="text-left">
+                        <p class="text-emerald-500 font-bold text-xs">${h.msg}</p>
+                        <p class="text-[8px] text-slate-600 uppercase">${h.time}</p>
+                      </div>
+                      <div class="text-emerald-500 text-lg">✓</div>
+                    </div>
+                  `)}
+                </div>
+              </div>
+            `}
           </div>
         </div>
       `;
