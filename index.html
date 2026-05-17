@@ -800,46 +800,6 @@
       `;
     }
 
-    // --- VOICE & AUDIO SERVICE ---
-    const VoiceService = {
-      playSuccess: () => {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        osc.connect(gain); gain.connect(ctx.destination);
-        osc.type = 'sine'; osc.frequency.setValueAtTime(880, ctx.currentTime);
-        gain.gain.setValueAtTime(0.1, ctx.currentTime);
-        osc.start(); osc.stop(ctx.currentTime + 0.1);
-      },
-      playJackpot: () => {
-        const ctx = new (window.AudioContext || window.webkitAudioContext)();
-        const notes = [523.25, 659.25, 783.99, 1046.50]; // C, E, G, C (higher)
-        notes.forEach((freq, i) => {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain); gain.connect(ctx.destination);
-          osc.type = 'square';
-          osc.frequency.setValueAtTime(freq, ctx.currentTime + (i * 0.1));
-          gain.gain.setValueAtTime(0.1, ctx.currentTime + (i * 0.1));
-          gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + (i * 0.1) + 0.5);
-          osc.start(ctx.currentTime + (i * 0.1));
-          osc.stop(ctx.currentTime + (i * 0.1) + 0.5);
-        });
-      },
-      speak: (text, count = 1) => {
-        if (!('speechSynthesis' in window)) return;
-        window.speechSynthesis.cancel();
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'es-ES'; utterance.rate = 0.9;
-        let repeated = 0;
-        utterance.onend = () => {
-          repeated++;
-          if (repeated < count) setTimeout(() => window.speechSynthesis.speak(utterance), 500);
-        };
-        window.speechSynthesis.speak(utterance);
-      }
-    };
-
     function Navbar({ setView, currentView, userRole, onLogout }) {
       return html`
         <nav class="fixed top-0 left-0 right-0 z-[500] px-6 py-4">
