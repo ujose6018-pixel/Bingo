@@ -128,7 +128,7 @@
     import htm from 'https://esm.sh/htm';
     
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider, signInWithPopup, signOut } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
     const html = htm.bind(React.createElement);
@@ -201,6 +201,7 @@
         if (segments[0] === 'admin') return { type: 'admin' };
         if (segments[0] === 'staff') return { type: 'staff', email: queryParams.get('email') };
         if (segments[0] === 'display') return { type: 'display' };
+        if (segments[0] === 'card') return { type: 'shared_card', cardId: segments[1] };
         if (segments.length > 0) return { type: 'player', eventSlug: segments[0] };
         return { type: 'home' };
       }, [path]);
@@ -237,8 +238,7 @@
       `;
     }
 
-    function PlayerView({ activeEvent, cards, user, onReserveCard, onRequestChange }) {
-      const [name, setName] = useState('');
+    function PlayerView({ activeEvent, cards, user, onReserveCard, onRequestChange, onLoginGoogle, onLogout, onShareCard }) {
       const [showChangeModal, setShowChangeModal] = useState(false);
       const [changeCode, setChangeCode] = useState('');
       const [qrModalCard, setQrModalCard] = useState(null);
@@ -248,13 +248,53 @@
 
       if (!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase animate-pulse">Esperando Apertura de Mesa Royale...</div>`;
 
+      // LOGIN SCREEN FOR PLAYERS WITHOUT GOOGLE
+      if (!user || user.isAnonymous) {
+        return html`
+          <div class="min-h-screen flex flex-col items-center justify-center p-6 text-center space-y-12 bg-[#05070a]">
+            <div class="space-y-4">
+              <span class="text-amber-500 font-black text-[10px] uppercase tracking-[0.5em]">Invitación VIP</span>
+              <h1 class="bingo-title text-7xl italic">${activeEvent.name}</h1>
+              <div class="h-px w-32 mx-auto bg-amber-500/20"></div>
+              <p class="text-slate-400 font-medium text-sm max-w-sm mx-auto leading-relaxed">
+                Para participar en esta gala exclusiva y reservar tus cartones, es necesario validar tu identidad con Google.
+              </p>
+            </div>
+
+            <button onClick=${onLoginGoogle} class="glass-card px-10 py-6 rounded-3xl border-amber-500/30 hover:border-amber-500 transition-all group flex items-center gap-6">
+              <div class="w-12 h-12 bg-white rounded-2xl flex items-center justify-center shadow-lg group-hover:scale-110 transition-transform">
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" class="w-6 h-6" />
+              </div>
+              <div class="text-left">
+                <p class="text-white font-black text-lg uppercase tracking-tighter">Entrar con Google</p>
+                <p class="text-amber-500 font-black text-[8px] uppercase tracking-widest">Acceso Seguro Royale</p>
+              </div>
+            </button>
+
+            <div class="pt-10 opacity-30">
+               <p class="text-[8px] text-slate-500 font-black uppercase tracking-[0.3em]">Powered by Royale Enterprise</p>
+            </div>
+          </div>
+        `;
+      }
+
       return html`
         <div class="view-container pt-24 pb-24 px-6 max-w-7xl mx-auto space-y-12">
-          <!-- CABECERA DEL EVENTO -->
-          <div class="text-center space-y-4">
-            <h2 class="text-6xl font-black text-white uppercase tracking-tighter italic">${activeEvent.name}</h2>
-            <div class="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
-              <span class="text-amber-500 font-black tracking-widest text-[10px] uppercase">Gala Privada en Curso</span>
+          <!-- CABECERA DEL EVENTO Y PERFIL -->
+          <div class="flex flex-col md:flex-row justify-between items-center gap-8">
+            <div class="text-center md:text-left space-y-4">
+              <h2 class="text-6xl font-black text-white uppercase tracking-tighter italic">${activeEvent.name}</h2>
+              <div class="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <span class="text-amber-500 font-black tracking-widest text-[10px] uppercase">Gala Privada en Curso</span>
+              </div>
+            </div>
+            
+            <div class="glass-card p-4 rounded-3xl flex items-center gap-4 border-amber-500/20 pr-6">
+              <img src=${user.photoURL} class="w-12 h-12 rounded-2xl border-2 border-amber-500/50" />
+              <div class="text-left">
+                <p class="text-white font-black text-sm uppercase tracking-tighter">${user.displayName}</p>
+                <button onClick=${onLogout} class="text-[8px] font-black text-amber-500/60 hover:text-rose-500 transition-colors uppercase tracking-widest">Cerrar Sesión</button>
+              </div>
             </div>
           </div>
 
@@ -269,10 +309,18 @@
               
               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
                 ${myCards.map(card => html`
-                  <div key=${card.id} onClick=${() => setQrModalCard(card)} class="glass-card p-4 rounded-2xl border-amber-500/20 hover:border-amber-500 transition-all cursor-pointer group text-center space-y-3">
-                    <p class="text-[10px] font-black text-slate-500 group-hover:text-amber-500 transition-colors uppercase">Mesa #${card.cardNumber}</p>
-                    <div class="w-10 h-10 mx-auto bg-amber-500/10 rounded-xl flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-deep-bg transition-all">📱</div>
-                    <p class="text-[8px] font-bold ${card.status === 'active' ? 'text-emerald-500' : 'text-amber-500'} uppercase tracking-widest">${card.status === 'active' ? 'Activo' : 'Pendiente'}</p>
+                  <div key=${card.id} class="glass-card p-4 rounded-2xl border-amber-500/20 hover:border-amber-500 transition-all cursor-pointer group text-center space-y-3 relative">
+                    <div onClick=${() => setQrModalCard(card)} class="space-y-3">
+                      <p class="text-[10px] font-black text-slate-500 group-hover:text-amber-500 transition-colors uppercase">Mesa #${card.cardNumber}</p>
+                      <div class="w-10 h-10 mx-auto bg-amber-500/10 rounded-xl flex items-center justify-center text-xl group-hover:bg-amber-500 group-hover:text-deep-bg transition-all">📱</div>
+                      <p class="text-[8px] font-bold ${card.status === 'active' ? 'text-emerald-500' : 'text-amber-500'} uppercase tracking-widest">${card.status === 'active' ? 'Activo' : 'Pendiente'}</p>
+                    </div>
+                    <button onClick=${(e) => { e.stopPropagation(); onShareCard(card.id); }} class="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500 text-indigo-400 hover:text-white rounded-xl text-[8px] font-black uppercase tracking-widest transition-all">
+                      Compartir
+                    </button>
+                    ${card.sharedAlias && html`
+                      <p class="text-[7px] text-indigo-300 font-bold uppercase truncate px-2">Alias: ${card.sharedAlias}</p>
+                    `}
                   </div>
                 `)}
               </div>
@@ -359,31 +407,19 @@
 
           <!-- SELECCIÓN DE CARTONES -->
           <div class="space-y-12">
-            ${myCards.length > 0 ? html`
-              <div class="flex items-center gap-4">
-                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
-                <h3 class="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">¿Deseas más cartones?</h3>
-                <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
-              </div>
-            ` : null}
+            <div class="flex items-center gap-4">
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+              <h3 class="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Catálogo de Cartones Disponibles</h3>
+              <div class="h-px flex-1 bg-gradient-to-r from-transparent via-slate-800 to-transparent"></div>
+            </div>
 
-            ${myCards.length === 0 ? html`
-              <div class="max-w-md mx-auto glass-card p-8 rounded-[2.5rem] space-y-6">
-                <div class="space-y-2 text-center">
-                  <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Identificación del Invitado</label>
-                  <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="NOMBRE COMPLETO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-5 text-center text-white font-black outline-none focus:border-amber-500 transition-all uppercase tracking-widest" />
-                  <p class="text-[9px] text-slate-600 italic">Escribe tu nombre para habilitar la selección de mesa.</p>
-                </div>
-              </div>
-            ` : null}
-
-            ${(name.trim().length > 3 || myCards.length > 0) ? html`
-              <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 opacity-60 hover:opacity-100 transition-opacity">
-                ${availableCards.slice(0, 16).map(card => html`<${MiniCard} key=${card.id} card=${card} onReserve=${onReserveCard} playerName=${name || myCards[0]?.playerName} />`)}
-              </div>
-            ` : html`
+            <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 opacity-60 hover:opacity-100 transition-opacity">
+              ${availableCards.slice(0, 16).map(card => html`<${MiniCard} key=${card.id} card=${card} onReserve=${onReserveCard} playerName=${user.displayName} />`)}
+            </div>
+            
+            ${availableCards.length === 0 && html`
               <div class="text-center py-20 border-2 border-dashed border-slate-800 rounded-[3rem]">
-                <p class="text-slate-700 font-black uppercase tracking-[0.3em]">Introduce tu nombre para ver los cartones</p>
+                <p class="text-slate-700 font-black uppercase tracking-[0.3em]">No hay más cartones disponibles para esta gala.</p>
               </div>
             `}
           </div>
@@ -637,6 +673,72 @@
       `;
     }
 
+    function SharedCardView({ cardId, events, cards, activeEvent }) {
+      const card = useMemo(() => cards.find(c => c.id === cardId), [cards, cardId]);
+      const event = useMemo(() => events.find(e => e.id === card?.eventId), [events, card]);
+      
+      if (!card || !event) return html`<div class="min-h-screen flex items-center justify-center text-amber-500 font-black tracking-widest animate-pulse">CARGANDO CARTÓN COMPARTIDO...</div>`;
+
+      const matrix = JSON.parse(card.numbers);
+      const markTimes = card.markTimes ? JSON.parse(card.markTimes) : {};
+
+      return html`
+        <div class="view-container p-4 md:p-8 max-w-2xl mx-auto space-y-8">
+          <div class="text-center space-y-2 pt-10">
+            <span class="text-amber-500 font-black text-[10px] uppercase tracking-[0.4em]">Invitado de Gala</span>
+            <h2 class="text-4xl font-black text-white uppercase tracking-tighter italic">${card.sharedAlias || 'Jugador Invitado'}</h2>
+            <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-amber-500/10 border border-amber-500/20">
+               <span class="text-amber-500 font-black tracking-widest text-[8px] uppercase">Mesa Royale #${card.cardNumber}</span>
+            </div>
+          </div>
+
+          <div class="p-6 md:p-10 rounded-[3rem] border-4 ${card.status === 'active' ? 'border-amber-500' : 'border-slate-800'} bg-slate-900 shadow-2xl space-y-8 relative overflow-hidden">
+            <div class="flex justify-between items-center relative z-10">
+              <span class="bingo-title text-2xl font-black italic">BINGO</span>
+              <div class="text-right">
+                <p class="text-amber-500 font-black text-[8px] uppercase tracking-widest">Patrón de Juego</p>
+                <p class="text-white font-black text-xs uppercase tracking-tighter">${event.pattern.replace('_', ' ')}</p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-5 gap-2 relative z-10">
+              ${['B','I','N','G','O'].map(l => html`
+                <div class="aspect-square flex items-center justify-center text-lg font-black text-amber-500/20">${l}</div>
+              `)}
+              ${matrix.map(row => row.map((cell, cellIdx) => {
+                const isFree = cell === 'FREE';
+                const isDrawn = !isFree && event.drawnNumbers.includes(cell);
+                const isMarked = markTimes[cell] || isFree;
+                
+                const toggleMark = async (e) => {
+                  if (card.status !== 'active') return;
+                  if (!isDrawn && !isFree) return VoiceService.speak(`No ha salido`, 1);
+                  
+                  const newMarkTimes = { ...markTimes };
+                  if (newMarkTimes[cell]) delete newMarkTimes[cell];
+                  else newMarkTimes[cell] = Date.now();
+
+                  await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', card.id), {
+                    markTimes: JSON.stringify(newMarkTimes)
+                  });
+                };
+
+                return html`
+                  <div onClick=${toggleMark} class="bingo-cell cursor-pointer text-sm md:text-xl ${isMarked ? 'bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}">
+                    ${isFree ? '★' : cell}
+                  </div>
+                `;
+              }))}
+            </div>
+          </div>
+          
+          <div class="text-center pb-10">
+            <p class="text-slate-600 font-black text-[8px] uppercase tracking-[0.3em]">Cortesía de ${card.playerName}</p>
+          </div>
+        </div>
+      `;
+    }
+
     // --- MAIN APP ---
     function App() {
       const { type, eventSlug, email, navigate, getCleanBaseUrl } = useRouting();
@@ -689,6 +791,21 @@
       }, [events, eventSlug]);
 
       // Actions
+      const handleLoginGoogle = async () => {
+        try {
+          const provider = new GoogleAuthProvider();
+          await signInWithPopup(auth, provider);
+        } catch (error) {
+          console.error("Error Google Login:", error);
+          alert("Error al iniciar sesión con Google.");
+        }
+      };
+
+      const handleLogout = async () => {
+        await signOut(auth);
+        window.location.reload();
+      };
+
       const handleCreateEvent = async (name, count, rounds) => {
         const batch = writeBatch(db);
         const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
@@ -751,6 +868,26 @@
         VoiceService.speak(`${letter}, ${next}`, 3);
       };
 
+      const handleShareCard = async (cardId) => {
+        const alias = prompt('Introduce un alias para este cartón compartido (ej: Primo Juan):');
+        if (!alias) return;
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), {
+          sharedAlias: alias
+        });
+        const url = `${getCleanBaseUrl()}#/card/${cardId}`;
+        navigator.clipboard.writeText(url);
+        alert(`¡Enlace copiado para ${alias}!\n\n${url}`);
+      };
+
+      const handleFinalizeEventExternally = async (eventId) => {
+        if (!confirm('¿Seguro que deseas dar por finalizada esta gala desde el dashboard?')) return;
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', eventId), {
+          status: 'finished',
+          finishedAt: Date.now()
+        });
+        alert('Gala finalizada correctamente.');
+      };
+
       if (loading) return html`
         <div class="min-h-screen flex flex-col items-center justify-center space-y-8 bg-black">
           <div class="relative w-24 h-24">
@@ -764,6 +901,10 @@
         </div>
       `;
 
+      if (type === 'shared_card') {
+        return html`<${SharedCardView} cardId=${routeInfo.cardId} events=${events} cards=${cards} activeEvent=${activeEvent} />`;
+      }
+
       if (type === 'display') {
         return html`<${DisplayView} activeEvent=${activeEvent} />`;
       }
@@ -774,7 +915,18 @@
         return html`
           <div class="view-container">
             <${Navbar} setView=${(v) => navigate('/' + v)} currentView="admin" userRole=${userRole} />
-            <${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} getCleanBaseUrl=${getCleanBaseUrl} />
+            <${AdminView} 
+              userRole=${userRole} 
+              activeEvent=${activeEvent} 
+              cards=${cards} 
+              events=${events}
+              onCreateEvent=${handleCreateEvent} 
+              onDrawNumber=${handleDrawNumber} 
+              onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} 
+              onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} 
+              getCleanBaseUrl=${getCleanBaseUrl} 
+              onFinalizeEventExternally=${handleFinalizeEventExternally}
+            />
           </div>
         `;
       }
@@ -811,14 +963,23 @@
 
       return html`
         <div class="view-container">
-          <${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />
+          <${PlayerView} 
+            activeEvent=${activeEvent} 
+            cards=${cards} 
+            user=${user} 
+            onReserveCard=${handleReserveCard} 
+            onRequestChange=${handleRequestChange} 
+            onLoginGoogle=${handleLoginGoogle}
+            onLogout=${handleLogout}
+            onShareCard=${handleShareCard}
+          />
         </div>
       `;
     }
 
     // --- PLACEHOLDER COMPONENTS FOR ISOLATION ---
 
-    function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame, getCleanBaseUrl }) {
+    function AdminView({ userRole, activeEvent, cards, events, onCreateEvent, onDrawNumber, onChangePattern, onResetGame, getCleanBaseUrl, onFinalizeEventExternally }) {
       const [eventName, setEventName] = useState('');
       const [cardCount, setCardCount] = useState(100);
       const [totalRounds, setTotalRounds] = useState(5);
@@ -827,6 +988,10 @@
       const [isProcessing, setIsProcessing] = useState(false);
       const [winnerCandidates, setWinnerCandidates] = useState([]);
       const [validateCardId, setValidateCardId] = useState('');
+      const [showDashboard, setShowDashboard] = useState(false);
+
+      const activeEvents = useMemo(() => events.filter(e => e.status === 'active'), [events]);
+      const finishedEvents = useMemo(() => events.filter(e => e.status === 'finished').sort((a,b) => b.finishedAt - a.finishedAt), [events]);
 
       const invitationUrl = useMemo(() => {
         if (!activeEvent) return '';
@@ -981,26 +1146,85 @@
         }
       };
 
-      if (!activeEvent && userRole === ROLES.ADMIN) {
+      if (showDashboard || (!activeEvent && userRole === ROLES.ADMIN)) {
         return html`
-          <div class="min-h-screen flex items-center justify-center px-6 pt-20">
-            <div class="max-w-md w-full glass-card p-12 rounded-[3rem] gold-border space-y-8 text-center fade-up">
-              <h2 class="text-4xl font-black text-white uppercase tracking-tighter italic">Nueva Gala</h2>
-              <div class="space-y-6 text-left">
-                <div class="space-y-2">
-                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Nombre del Evento</label>
-                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="BINGO NOCTURNO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+          <div class="min-h-screen pt-32 pb-20 px-6 max-w-7xl mx-auto space-y-12 fade-up">
+            <div class="flex flex-col md:flex-row justify-between items-end gap-6">
+              <div class="space-y-2">
+                <h2 class="text-5xl font-black text-white uppercase tracking-tighter italic">Dashboard Royale</h2>
+                <p class="text-amber-500/60 font-black text-[10px] uppercase tracking-[0.4em]">Gestión Centralizada de Galas</p>
+              </div>
+              <button onClick=${() => setShowDashboard(false)} class="${!activeEvent ? 'hidden' : ''} px-6 py-3 bg-white/5 hover:bg-white hover:text-black rounded-2xl font-black text-[10px] uppercase tracking-widest transition-all">
+                Volver a la Consola
+              </button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-12">
+              <!-- CREAR NUEVO -->
+              <div class="glass-card p-10 rounded-[3rem] border-amber-500/30 space-y-8 h-fit">
+                <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Nueva Gala</h3>
+                <div class="space-y-6">
+                  <div class="space-y-2">
+                    <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Nombre</label>
+                    <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="BINGO NOCTURNO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+                  </div>
+                  <div class="grid grid-cols-2 gap-4">
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Cartones</label>
+                      <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+                    </div>
+                    <div class="space-y-2">
+                      <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Rondas</label>
+                      <input type="number" value=${totalRounds} onChange=${e => setTotalRounds(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+                    </div>
+                  </div>
                 </div>
-                <div class="space-y-2">
-                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Cantidad de Cartones</label>
-                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+                <button onClick=${() => onCreateEvent(eventName, cardCount, totalRounds)} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">Inicializar Gala</button>
+              </div>
+
+              <!-- EVENTOS ACTIVOS -->
+              <div class="lg:col-span-2 space-y-8">
+                <div class="space-y-6">
+                  <h3 class="text-xs font-black text-emerald-500 uppercase tracking-[0.3em] flex items-center gap-3">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Galas en Curso
+                  </h3>
+                  <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    ${activeEvents.map(e => html`
+                      <div key=${e.id} class="glass-card p-8 rounded-[2.5rem] border-emerald-500/20 space-y-6 group hover:border-emerald-500 transition-all">
+                        <div class="flex justify-between items-start">
+                          <div class="space-y-1">
+                            <h4 class="text-2xl font-black text-white uppercase tracking-tighter">${e.name}</h4>
+                            <p class="text-[10px] text-slate-500 font-bold uppercase tracking-widest">Ronda ${e.currentRound} / ${e.totalRounds}</p>
+                          </div>
+                          <button onClick=${() => onFinalizeEventExternally(e.id)} class="text-rose-500 hover:text-rose-400 font-black text-[8px] uppercase tracking-widest p-2 bg-rose-500/10 rounded-lg opacity-0 group-hover:opacity-100 transition-all">Finalizar</button>
+                        </div>
+                        <div class="flex gap-3">
+                          <button onClick=${() => { window.location.hash = `#/${e.slug}`; window.location.reload(); }} class="flex-1 py-3 bg-emerald-500 text-deep-bg rounded-xl font-black text-[10px] uppercase tracking-widest hover:brightness-110 transition-all">Abrir Consola</button>
+                        </div>
+                      </div>
+                    `)}
+                    ${activeEvents.length === 0 && html`<p class="text-slate-700 font-black uppercase tracking-widest italic text-sm py-10">No hay galas activas...</p>`}
+                  </div>
                 </div>
-                <div class="space-y-2">
-                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Número de Jugadas (Rondas)</label>
-                  <input type="number" value=${totalRounds} onChange=${e => setTotalRounds(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+
+                <!-- HISTORIAL -->
+                <div class="space-y-6">
+                  <h3 class="text-xs font-black text-slate-500 uppercase tracking-[0.3em]">Historial de Galas Finalizadas</h3>
+                  <div class="space-y-4">
+                    ${finishedEvents.slice(0, 5).map(e => html`
+                      <div key=${e.id} class="bg-black/40 p-6 rounded-[2rem] border border-slate-800 flex justify-between items-center group hover:border-amber-500/30 transition-all">
+                        <div class="space-y-1">
+                          <p class="text-white font-bold text-lg tracking-tighter">${e.name}</p>
+                          <p class="text-[8px] text-slate-600 font-black uppercase tracking-widest">${new Date(e.finishedAt).toLocaleDateString()} • ${JSON.parse(e.winnersHistory || '[]').length} Rondas</p>
+                        </div>
+                        <div class="text-right">
+                           <p class="text-amber-500 font-black text-xs uppercase tracking-widest">🏆 Gala Royale</p>
+                        </div>
+                      </div>
+                    `)}
+                  </div>
                 </div>
               </div>
-              <button onClick=${() => onCreateEvent(eventName, cardCount, totalRounds)} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">Inicializar Sistema</button>
             </div>
           </div>
         `;
@@ -1021,7 +1245,8 @@
         <div class="min-h-screen pt-32 pb-20 px-6 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 fade-up">
           <div class="lg:col-span-2 space-y-8">
             <div class="glass-card p-12 rounded-[4rem] flex flex-col items-center space-y-12 relative overflow-hidden border-amber-500/30">
-              <div class="absolute top-0 right-0 p-10">
+              <div class="absolute top-0 right-0 p-10 flex gap-4">
+                <button onClick=${() => setShowDashboard(true)} class="px-4 py-2 rounded-xl bg-white/5 hover:bg-white hover:text-black text-white text-[10px] font-black uppercase tracking-widest transition-all">Dashboard</button>
                 <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase tracking-widest">
                   <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Console
                 </div>
