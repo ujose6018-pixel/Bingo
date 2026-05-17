@@ -876,13 +876,15 @@
             if (uSnap.exists()) {
               setUserRole(uSnap.data().role);
             } else if (u.email && u.email.endsWith(SYSTEM_DOMAIN)) {
-              // Si es un email del dominio interno, buscar en la colección de staff/admin
+              // Buscar en la colección de staff por UID vinculado
               const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
               if (!staffSnap.empty) {
-                setUserRole(staffSnap.docs[0].data().role || ROLES.STAFF);
+                const role = staffSnap.docs[0].data().role || ROLES.STAFF;
+                setUserRole(role);
               } else {
                 // Caso especial para el admin de emergencia si no está en la colección pero tiene el email
                 if (u.email === `admin${SYSTEM_DOMAIN}`) setUserRole(ROLES.ADMIN);
+                else setUserRole(ROLES.PLAYER);
               }
             } else {
               setUserRole(ROLES.PLAYER);
@@ -923,59 +925,55 @@
               const res = await signInWithEmailAndPassword(auth, email, passClean);
               await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN }, { merge: true });
               setUserRole(ROLES.ADMIN);
-              navigate('/admin'); // Redirección automática
+              navigate('/admin');
               return true;
             } catch (error) {
               if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
                 const res = await createUserWithEmailAndPassword(auth, email, passClean);
                 await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
                 setUserRole(ROLES.ADMIN);
-                navigate('/admin'); // Redirección automática
-                return true;
-              }
-              if (auth.currentUser) {
-                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', auth.currentUser.uid), { role: ROLES.ADMIN });
-                setUserRole(ROLES.ADMIN);
-                navigate('/admin'); // Redirección automática
+                navigate('/admin');
                 return true;
               }
             }
           }
 
           // 2. Lógica para Staff
-          // Primero intentar login en Firebase Auth
-          try {
-            const res = await signInWithEmailAndPassword(auth, email, passClean);
-            const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
-            if (uSnap.exists()) {
-              const role = uSnap.data().role;
-              setUserRole(role);
-              navigate(role === ROLES.ADMIN ? '/admin' : '/staff');
-              return true;
-            }
-          } catch (e) {
-            // Si no está en Auth, buscar en la colección manual de Staff (Firestore)
-            const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
-              where('username', '==', userClean), 
-              where('password', '==', passClean)));
-            
-            if (!staffSnap.empty) {
-              const staffData = staffSnap.docs[0].data();
+          // Primero buscar en Firestore para validar credenciales manuales
+          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
+            where('username', '==', userClean), 
+            where('password', '==', passClean)));
+          
+          if (!staffSnap.empty) {
+            const staffDoc = staffSnap.docs[0];
+            try {
+              // Intentar login en Auth
+              const res = await signInWithEmailAndPassword(auth, email, passClean);
+              await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.STAFF }, { merge: true });
               setUserRole(ROLES.STAFF);
-              navigate('/staff'); // Redirección automática a Staff
-              
-              // Auto-registrar en Auth para persistencia
-              try {
-                const res = await createUserWithEmailAndPassword(auth, email, passClean);
-                await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', staffSnap.docs[0].id), { uid: res.user.uid });
-                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.STAFF });
-              } catch (err) {
-                if (err.code === 'auth/email-already-in-use') {
-                  await signInWithEmailAndPassword(auth, email, passClean);
-                }
-              }
+              navigate('/staff');
               return true;
+            } catch (authErr) {
+              // Si no existe en Auth, crearlo y vincularlo
+              if (authErr.code === 'auth/user-not-found' || authErr.code === 'auth/invalid-credential') {
+                const res = await createUserWithEmailAndPassword(auth, email, passClean);
+                await updateDoc(staffDoc.ref, { uid: res.user.uid });
+                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.STAFF });
+                setUserRole(ROLES.STAFF);
+                navigate('/staff');
+                return true;
+              }
             }
+          }
+
+          // Fallback: Login directo para cuentas ya migradas
+          const res = await signInWithEmailAndPassword(auth, email, passClean);
+          const uSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid));
+          if (uSnap.exists()) {
+            const role = uSnap.data().role;
+            setUserRole(role);
+            navigate(role === ROLES.ADMIN ? '/admin' : '/staff');
+            return true;
           }
 
           return false;
