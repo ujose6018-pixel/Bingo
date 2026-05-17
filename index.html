@@ -1127,6 +1127,7 @@
           totalRounds: Number(rounds) || 5,
           currentRound: 1,
           winnersHistory: JSON.stringify([]),
+          tempChangeCodes: JSON.stringify([]), // Resetear códigos de cambio
           createdAt: Date.now(),
           slug: Math.random().toString(36).substring(2, 8)
         };
@@ -1210,29 +1211,43 @@
       };
 
       const handleRequestChange = async (cardId, code) => {
-         if (activeEvent && activeEvent.tempChangeCodes) {
-           const tempCodes = JSON.parse(activeEvent.tempChangeCodes);
-           const foundIdx = tempCodes.findIndex(c => c.code === code);
-           if (foundIdx !== -1) {
-             const newCodes = tempCodes.filter((_, i) => i !== foundIdx);
-             await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
-               tempChangeCodes: JSON.stringify(newCodes)
-             });
-             // Liberar cartón actual
-             await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
-             // Marcar al usuario como "pre-autorizado" para el cambio (sin QR)
-             await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
-             return true;
-           }
-         }
-         const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
-         if(!s.empty) { 
-           await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
-           return true; 
-         }
-         alert('Código Inválido o Expirado');
-         return false;
-       };
+          if (!activeEvent) return false;
+          
+          // SENIOR FIX: Obtener documento fresco de Firestore para evitar estados de cierre (stale state)
+          const eventRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id);
+          const eventSnap = await getDoc(eventRef);
+          
+          if (eventSnap.exists()) {
+            const latestData = eventSnap.data();
+            if (latestData.tempChangeCodes) {
+              const tempCodes = JSON.parse(latestData.tempChangeCodes);
+              const cleanCode = code.trim();
+              const foundIdx = tempCodes.findIndex(c => c.code.toString() === cleanCode);
+              
+              if (foundIdx !== -1) {
+                const newCodes = tempCodes.filter((_, i) => i !== foundIdx);
+                await updateDoc(eventRef, {
+                  tempChangeCodes: JSON.stringify(newCodes)
+                });
+                // Liberar cartón actual
+                await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+                // Marcar al usuario como "pre-autorizado" para el cambio (sin QR)
+                await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid), { preAuthorized: true }, { merge: true });
+                return true;
+              }
+            }
+          }
+
+          // Fallback: Verificar códigos de Staff permanentes
+          const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code.trim())));
+          if(!s.empty) { 
+            await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+            return true; 
+          }
+          
+          alert('Código Inválido o Expirado. Asegúrate de usar el código generado por el Staff.');
+          return false;
+        };
 
       const handleDrawNumber = async () => {
         const available = Array.from({length:75}, (_,i)=>i+1).filter(n => !activeEvent.drawnNumbers.includes(n));
