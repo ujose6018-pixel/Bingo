@@ -906,36 +906,55 @@
 
       // Actions
       const handleSystemLogin = async (username, password) => {
-        const email = `${username.toLowerCase()}${SYSTEM_DOMAIN}`;
+        // NORMALIZACIÓN SENIOR
+        const userClean = username.trim().toLowerCase();
+        const passClean = password.trim();
+        const email = `${userClean}${SYSTEM_DOMAIN}`;
+
         try {
-          // 1. Intentar Login Directo (Admin o Staff ya registrado)
-          await signInWithEmailAndPassword(auth, email, password);
-          return true;
-        } catch (error) {
-          // 2. Si es Admin de Emergencia y no existe
-          if (username === 'admin' && password === 'admin' && (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password')) {
+          // 1. LOGIN DE EMERGENCIA DIRECTO (Hardcoded para máxima fiabilidad)
+          if (userClean === 'admin' && passClean === 'admin') {
             try {
-              const res = await createUserWithEmailAndPassword(auth, email, password);
-              await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
+              // Intentar login
+              const res = await signInWithEmailAndPassword(auth, email, passClean);
+              // Asegurar que tenga el rol en la base de datos
+              await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN }, { merge: true });
               return true;
-            } catch (e) {
-              // Si ya existe pero el error fue wrong-password, el admin real cambió la clave
-              if (error.code === 'auth/wrong-password') return false;
+            } catch (error) {
+              // Si no existe el usuario 'admin@royale.internal', lo creamos
+              if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+                try {
+                  const res = await createUserWithEmailAndPassword(auth, email, passClean);
+                  await setDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', res.user.uid), { role: ROLES.ADMIN });
+                  return true;
+                } catch (createErr) {
+                  // Si falla la creación (ej: ya existe pero clave distinta), intentamos login de nuevo por si acaso
+                  console.error("Emergency Create Error:", createErr);
+                }
+              }
             }
           }
+
+          // 2. Intentar Login Directo para otros usuarios (Staff)
+          await signInWithEmailAndPassword(auth, email, passClean);
+          return true;
+        } catch (error) {
+          console.error("Auth System Error:", error.code, error.message);
           
-          // 3. Verificar si es un Staff creado por el Admin en Firestore
-          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('username', '==', username), where('password', '==', password)));
+          // 3. Verificar si es un Staff creado por el Admin en Firestore (Modo Fallback)
+          const staffSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), 
+            where('username', '==', userClean), 
+            where('password', '==', passClean)));
+            
           if (!staffSnap.empty) {
             try {
-              // Auto-registrar en Firebase Auth para persistencia de sesión
-              const res = await createUserWithEmailAndPassword(auth, email, password);
+              // Auto-registrar en Firebase Auth si no existe
+              const res = await createUserWithEmailAndPassword(auth, email, passClean);
               await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff', staffSnap.docs[0].id), { uid: res.user.uid });
               return true;
             } catch (e) {
-              // Si ya existía en Auth, solo loguear
               if (e.code === 'auth/email-already-in-use') {
-                await signInWithEmailAndPassword(auth, email, password);
+                await signInWithEmailAndPassword(auth, email, passClean);
                 return true;
               }
             }
