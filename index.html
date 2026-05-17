@@ -3,87 +3,147 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🎲</text></svg>">
-  <title>Bingo Premium Pro - Sistema de Eventos en Tiempo Real</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>👑</text></svg>">
+  <title>Bingo Royale Premium - Senior Enterprise Edition</title>
   
-  <!-- Optimización Senior: Carga de Tailwind con configuración para evitar advertencias de desarrollo -->
   <script src="https://cdn.tailwindcss.com?plugins=forms,typography,aspect-ratio"></script>
-  <script>
-    tailwind.config = {
-      theme: {
-        extend: {
-          colors: {
-            brand: {
-              primary: '#6366f1',
-              dark: '#0f172a'
-            }
-          }
-        }
-      }
-    }
-  </script>
-  
   <script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
   
   <style>
-    /* Estilos para el overlay de diagnóstico */
-    .diagnostic-overlay {
-      background: rgba(15, 23, 42, 0.95);
-      backdrop-filter: blur(8px);
+    @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;600;800&family=Bungee+Shade&display=swap');
+
+    :root {
+      --gold: #D4AF37;
+      --gold-light: #F9E076;
+      --gold-dark: #996515;
+      --royal-blue: #1e3a8a;
+      --deep-bg: #05070a;
+      --card-bg: #0f172a;
     }
-    .code-block {
-      background: #1e293b;
-      padding: 1rem;
+
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      background: var(--deep-bg);
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+
+    /* Bingo Royale Theme Classes */
+    .bingo-title {
+      font-family: 'Bungee Shade', cursive;
+      background: linear-gradient(to bottom, var(--gold-light), var(--gold), var(--gold-dark));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      filter: drop-shadow(0 0 15px rgba(212, 175, 55, 0.4));
+    }
+
+    .glass-card {
+      background: rgba(15, 23, 42, 0.8);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(212, 175, 55, 0.2);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+    }
+
+    .gold-gradient-bg {
+      background: linear-gradient(135deg, var(--gold-light) 0%, var(--gold) 50%, var(--gold-dark) 100%);
+    }
+
+    .bingo-cell {
+      aspect-ratio: 1 / 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 800;
+      font-size: 1.5rem;
       border-radius: 0.75rem;
-      font-family: monospace;
-      font-size: 0.875rem;
-      color: #e2e8f0;
-      border: 1px border #334155;
+      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      border: 1px solid rgba(255, 255, 255, 0.05);
     }
+
+    .bingo-cell-empty {
+      background: rgba(255, 255, 255, 0.03);
+      color: rgba(255, 255, 255, 0.2);
+    }
+
+    .bingo-cell-marked {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold));
+      color: var(--deep-bg);
+      transform: scale(0.95);
+      box-shadow: 0 0 20px rgba(212, 175, 55, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.5);
+    }
+
+    .bingo-cell-free {
+      background: linear-gradient(135deg, #6366f1, #4338ca);
+      color: white;
+      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
+    }
+
+    /* Custom Animations */
+    @keyframes pulse-gold {
+      0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
+      50% { box-shadow: 0 0 40px rgba(212, 175, 55, 0.7); }
+    }
+
+    .active-number-glow {
+      animation: pulse-gold 2s infinite;
+    }
+
+    .fade-up {
+      animation: fadeUp 0.6s ease-out forwards;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Senior Responsive Grid */
+    .bingo-grid-container {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.75rem;
+      padding: 1.5rem;
+      background: var(--card-bg);
+      border-radius: 2rem;
+      border: 4px solid var(--gold);
+      position: relative;
+    }
+
+    .bingo-grid-container::before {
+      content: 'ROYALE';
+      position: absolute;
+      top: -12px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--gold);
+      color: var(--deep-bg);
+      padding: 2px 16px;
+      font-size: 0.65rem;
+      font-weight: 900;
+      letter-spacing: 0.2em;
+      border-radius: 100px;
+    }
+
+    /* Utility */
+    .no-scrollbar::-webkit-scrollbar { display: none; }
   </style>
 </head>
-<body class="bg-slate-950 text-slate-50 min-h-screen antialiased selection:bg-indigo-500 selection:text-white">
-
-  <!-- Senior Debugger: Detección de protocolo file:// -->
-  <div id="file-protocol-warning" class="hidden fixed inset-0 z-[9999] diagnostic-overlay flex items-center justify-center p-6">
-    <div class="max-w-2xl w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-      <div class="flex items-center space-x-4 mb-6">
-        <div class="p-3 bg-amber-500/10 text-amber-500 rounded-2xl">⚠️</div>
-        <h2 class="text-2xl font-black text-white">Error de Origen de Seguridad</h2>
-      </div>
-      <p class="text-slate-400 mb-6">Estás abriendo el archivo directamente desde tu carpeta (<span class="text-amber-400 font-mono italic">file://</span>). Los estándares modernos de desarrollo (ES Modules y Firebase) requieren un servidor web para funcionar por seguridad.</p>
-      <div class="space-y-4">
-        <p class="text-sm font-bold text-slate-300 uppercase tracking-wider">Solución Rápida (Senior Way):</p>
-        <div class="code-block">
-          # Ejecuta esto en tu terminal dentro de la carpeta del proyecto:<br/>
-          <span class="text-indigo-400">npx serve .</span>
-        </div>
-        <p class="text-xs text-slate-500 italic">O usa la extensión "Live Server" de VS Code.</p>
-      </div>
-    </div>
-  </div>
+<body class="selection:bg-amber-500 selection:text-white">
 
   <div id="root"></div>
 
   <script type="module">
-    // Comprobar protocolo inmediatamente
-    if (window.location.protocol === 'file:') {
-      document.getElementById('file-protocol-warning').classList.remove('hidden');
-    }
-
     import React, { useState, useEffect, useMemo, useCallback } from 'https://esm.sh/react@18';
     import ReactDOM from 'https://esm.sh/react-dom@18/client';
     import htm from 'https://esm.sh/htm';
     
-    // Firebase Modular SDK v11
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import { getFirestore, collection, doc, setDoc, onSnapshot, updateDoc, writeBatch, getDoc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-    // Vincular HTM a React
     const html = htm.bind(React.createElement);
 
-    // --- CONFIGURACIÓN DE FIREBASE ---
+    // --- CONFIG ---
     const firebaseConfig = {
       apiKey: "AIzaSyCFdkfrUi1FM-jktyB4IOdWt4PYe5v-gXU",
       authDomain: "bingo-b7670.firebaseapp.com",
@@ -93,393 +153,81 @@
       appId: "1:529198823545:web:58cf2abcf93a26ce933ca8"
     };
 
+    const APP_NAMESPACE = 'bingo_royale_enterprise_final';
+    const ROLES = { ADMIN: 'super_admin', STAFF: 'staff_collab', PLAYER: 'player_user' };
+
     const app = initializeApp(firebaseConfig);
     const auth = getAuth(app);
     const db = getFirestore(app);
 
-    // --- DOMINIO DE SEGURIDAD Y ROLES ---
-    const ROLES = {
-      SUPER_ADMIN: 'super_admin',
-      COLLABORATOR: 'collaborator',
-      PLAYER: 'player'
-    };
-
-    // Namespaces de colecciones escalables
-    const APP_NAMESPACE = 'app_bingo_enterprise_v3';
-    const PATH_EVENTS = 'eventos';
-    const PATH_CARDS = 'cartones';
-    const PATH_USERS = 'usuarios';
-    const PATH_COLLABS = 'colaboradores';
-
-    // --- SERVICIO DE VOZ ---
-    const VoiceService = {
-      speak: (text) => {
-        if ('speechSynthesis' in window) {
-          window.speechSynthesis.cancel();
-          const utterance = new SpeechSynthesisUtterance(text);
-          utterance.lang = 'es-ES';
-          utterance.rate = 0.95;
-          utterance.pitch = 1.0;
-          window.speechSynthesis.speak(utterance);
-        }
-      }
-    };
-
-    // --- DOMINIO DE LÓGICA DE JUEGO (BINGO UTILS) ---
+    // --- UTILS ---
     const BingoEngine = {
-      generateUniqueCode: (length = 6) => {
-        return Math.random().toString(36).substring(2, 2 + length).toUpperCase();
-      },
       generateCard: () => {
-        const getUniqueColumn = (min, max) => {
-          const set = new Set();
-          while (set.size < 5) {
-            set.add(Math.floor(Math.random() * (max - min + 1)) + min);
-          }
-          return Array.from(set);
+        const getCol = (min, max) => {
+          const s = new Set();
+          while(s.size < 5) s.add(Math.floor(Math.random() * (max - min + 1)) + min);
+          return Array.from(s).sort((a,b) => a-b);
         };
-        const b = getUniqueColumn(1, 15);
-        const i = getUniqueColumn(16, 30);
-        const n = getUniqueColumn(31, 45);
-        const g = getUniqueColumn(46, 60);
-        const o = getUniqueColumn(61, 75);
+        const b=getCol(1,15), i=getCol(16,30), n=getCol(31,45), g=getCol(46,60), o=getCol(61,75);
         n[2] = 'FREE';
         const matrix = [];
-        for (let row = 0; row < 5; row++) {
-          matrix.push([b[row], i[row], n[row], g[row], o[row]]);
-        }
+        for(let r=0; r<5; r++) matrix.push([b[r], i[r], n[r], g[r], o[r]]);
         return matrix;
-      },
-      PATTERNS: [
-        { id: 'full', name: 'Cartón Lleno' },
-        { id: 'four_corners', name: 'Cuatro Esquinas' },
-        { id: 'letter_x', name: 'Letra X' },
-        { id: 'line_horizontal', name: 'Línea Horizontal' },
-        { id: 'line_vertical', name: 'Línea Vertical' }
-      ]
+      }
     };
 
-    // --- COMPONENTE DE DIAGNÓSTICO FIREBASE (Senior Tool) ---
-    function FirebaseDiagnostic({ error }) {
+    // --- UI COMPONENTS ---
+
+    function Navbar({ setView, currentView, userRole }) {
       return html`
-        <div class="fixed inset-0 z-[9998] diagnostic-overlay flex items-center justify-center p-6">
-          <div class="max-w-2xl w-full bg-slate-900 border border-rose-500/30 rounded-3xl p-8 shadow-2xl">
-            <div class="flex items-center space-x-4 mb-6">
-              <div class="p-3 bg-rose-500/10 text-rose-500 rounded-2xl">🚫</div>
-              <h2 class="text-2xl font-black text-white">Error de Configuración Firebase</h2>
-            </div>
-            
-            ${error === 'auth/configuration-not-found' ? html`
-              <div class="space-y-6">
-                <p class="text-slate-400">El error <code class="text-rose-400">auth/configuration-not-found</code> indica que el inicio de sesión anónimo no está habilitado.</p>
-                <div class="space-y-4 bg-slate-950 p-6 rounded-2xl border border-slate-800">
-                  <p class="text-sm font-bold text-indigo-400 uppercase tracking-widest">Pasos para solucionar:</p>
-                  <ol class="list-decimal list-inside text-slate-300 space-y-3 text-sm">
-                    <li>Abre <a href="https://console.firebase.google.com/" target="_blank" class="text-blue-400 underline">Firebase Console</a></li>
-                    <li>Ve a <strong>Build > Authentication</strong></li>
-                    <li>Haz clic en la pestaña <strong>Sign-in method</strong></li>
-                    <li>Busca <strong>Anonymous</strong> y actívalo (Enable)</li>
-                    <li>Guarda los cambios y recarga esta página</li>
-                  </ol>
-                </div>
+        <nav class="fixed top-0 inset-x-0 z-[100] px-6 py-4">
+          <div class="max-w-7xl mx-auto glass-card rounded-2xl px-6 py-3 flex justify-between items-center border-amber-500/10">
+            <div class="flex items-center gap-3 cursor-pointer group" onClick=${() => setView('home')}>
+              <div class="w-10 h-10 gold-gradient-bg rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
+                <span class="text-xl">👑</span>
               </div>
-            ` : html`
-              <p class="text-slate-400">Ha ocurrido un error inesperado al conectar con Firebase: <br/> <code class="text-rose-400">${error}</code></p>
-            `}
-            
-            <button onClick=${() => window.location.reload()} class="mt-8 w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3 rounded-xl transition border border-slate-700">
-              Reintentar Conexión
-            </button>
-          </div>
-        </div>
-      `;
-    }
-
-    // --- COMPONENTE PRINCIPAL ---
-    function App() {
-      const [user, setUser] = useState(null);
-      const [userRole, setUserRole] = useState(ROLES.PLAYER);
-      const [authError, setAuthError] = useState(null);
-      const [view, setView] = useState('home'); 
-      const [events, setEvents] = useState([]);
-      const [cards, setCards] = useState([]);
-      const [loading, setLoading] = useState(true);
-
-      // Auth Initialization
-      useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-          if (!currentUser) {
-            signInAnonymously(auth).catch(err => {
-              console.error("Critical Auth Error:", err.code);
-              setAuthError(err.code);
-              setLoading(false);
-            });
-          } else {
-            setAuthError(null);
-            setUser(currentUser);
-            
-            const userRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS, currentUser.uid);
-            const userSnap = await getDoc(userRef);
-            
-            if (userSnap.exists()) {
-              setUserRole(userSnap.data().role);
-            } else {
-              const usersSnap = await getDocs(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS));
-              const role = usersSnap.empty ? ROLES.SUPER_ADMIN : ROLES.PLAYER;
-              await setDoc(userRef, { role, createdAt: Date.now() });
-              setUserRole(role);
-            }
-          }
-        });
-        return () => unsubscribe();
-      }, []);
-
-      // Real-time Data
-      useEffect(() => {
-        if (!user) return;
-
-        const eventsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS);
-        const cardsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS);
-
-        const unsubscribeEvents = onSnapshot(eventsRef, (snapshot) => {
-          const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          fetched.sort((a, b) => b.createdAt - a.createdAt);
-          setEvents(fetched);
-          setLoading(false);
-        }, err => console.error("Firestore Events Error:", err));
-
-        const unsubscribeCards = onSnapshot(cardsRef, (snapshot) => {
-          const fetched = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-          setCards(fetched);
-        }, err => console.error("Firestore Cards Error:", err));
-
-        return () => {
-          unsubscribeEvents();
-          unsubscribeCards();
-        };
-      }, [user]);
-
-      const activeEvent = useMemo(() => events.find(e => e.status === 'active') || events[0] || null, [events]);
-
-      // Admin Actions
-      const handleCreateEvent = async (name, totalCards) => {
-        if (!user || userRole !== ROLES.SUPER_ADMIN) return;
-        
-        const count = parseInt(totalCards);
-        if (isNaN(count) || count <= 0) return alert('Ingresa una cantidad válida.');
-        if (count > 450) return alert('Máximo 450 cartones por evento para garantizar estabilidad.');
-
-        const batch = writeBatch(db);
-        const eventRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS));
-        
-        const eventData = {
-          name: name || `Bingo - ${new Date().toLocaleDateString()}`,
-          totalCards: count,
-          status: 'active',
-          pattern: 'full',
-          drawnNumbers: [],
-          createdAt: Date.now(),
-          adminId: user.uid
-        };
-        
-        batch.set(eventRef, eventData);
-        
-        for (let i = 0; i < count; i++) {
-          const cardRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS));
-          const matrix = BingoEngine.generateCard();
-          batch.set(cardRef, {
-            eventId: eventRef.id,
-            cardNumber: i + 1,
-            numbers: JSON.stringify(matrix),
-            status: 'available',
-            playerId: null,
-            playerName: null,
-            authBy: null,
-            createdAt: Date.now()
-          });
-        }
-        
-        try {
-          await batch.commit();
-          alert('Evento creado con éxito.');
-        } catch (err) {
-          console.error('Batch commit error:', err);
-          alert('Error al crear evento. Revisa la consola.');
-        }
-      };
-
-      const handleDrawNumber = async () => {
-        if (!activeEvent || activeEvent.drawnNumbers.length >= 75) return;
-        let nextNum;
-        do {
-          nextNum = Math.floor(Math.random() * 75) + 1;
-        } while (activeEvent.drawnNumbers.includes(nextNum));
-
-        const ref = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS, activeEvent.id);
-        await updateDoc(ref, { drawnNumbers: [...activeEvent.drawnNumbers, nextNum] });
-      };
-
-      const handleChangePattern = async (patternId) => {
-        if (!activeEvent) return;
-        const ref = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS, activeEvent.id);
-        await updateDoc(ref, { pattern: patternId });
-      };
-
-      const handleResetGame = async () => {
-        if (!activeEvent) return;
-        const ref = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS, activeEvent.id);
-        await updateDoc(ref, { drawnNumbers: [] });
-      };
-
-      const handleReserveCard = async (cardId, playerName) => {
-        if (!user || !activeEvent) return;
-        
-        const cardRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
-        const cardSnap = await getDoc(cardRef);
-        
-        if (!cardSnap.exists() || cardSnap.data().status !== 'available') {
-          alert('Este cartón ya no está disponible.');
-          return;
-        }
-
-        await updateDoc(cardRef, {
-          status: 'reserved',
-          playerId: user.uid,
-          playerName: playerName,
-          reservedAt: Date.now()
-        });
-      };
-
-      const handleRequestChange = async (cardId, changeCode) => {
-        // Verificar código de colaborador
-        const collabsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS);
-        const q = query(collabsRef, where('changeCode', '==', changeCode.toUpperCase()));
-        const snap = await getDocs(q);
-        
-        if (snap.empty) {
-          alert('Código de colaborador inválido.');
-          return false;
-        }
-
-        const batch = writeBatch(db);
-        const cardRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
-        
-        // Liberar cartón actual
-        batch.update(cardRef, {
-          status: 'available',
-          playerId: null,
-          playerName: null,
-          authBy: null
-        });
-
-        await batch.commit();
-        alert('Cartón liberado. Ahora puedes escoger uno nuevo.');
-        return true;
-      };
-
-      const handleActivateCard = useCallback(async (cardId) => {
-        const target = cards.find(c => c.id === cardId);
-        if (!target) return { success: false, msg: 'Error: Cartón no registrado' };
-        if (target.status === 'active') return { success: false, msg: 'Aviso: Este cartón ya fue activado' };
-        if (target.status === 'available') return { success: false, msg: 'Aviso: Este cartón no ha sido reservado' };
-
-        const ref = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS, cardId);
-        await updateDoc(ref, { 
-          status: 'active',
-          authBy: user.uid,
-          activatedAt: Date.now()
-        });
-        return { success: true, msg: `¡Éxito! Cartón de ${target.playerName} activado` };
-      }, [cards, user]);
-
-      if (authError) return html`<${FirebaseDiagnostic} error=${authError} />`;
-
-      if (loading) {
-        return html`
-          <div class="min-h-screen flex flex-col items-center justify-center bg-slate-950 text-slate-100">
-            <div class="w-12 h-12 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-            <p class="font-semibold text-lg tracking-wider text-slate-400">INICIALIZANDO CONEXIÓN ENTERPRISE...</p>
-          </div>
-        `;
-      }
-
-      const renderHeader = () => view !== 'home' && view !== 'display' ? html`
-        <nav class="bg-slate-900 border-b border-slate-800 p-4 sticky top-0 z-50 shadow-md">
-          <div class="max-w-7xl mx-auto flex justify-between items-center">
-            <div class="flex items-center space-x-2 font-black text-xl tracking-tight text-indigo-400 cursor-pointer" onClick=${() => setView('home')}>
-              <span>⚡ BINGO enterprise</span>
+              <span class="bingo-title text-xl font-black tracking-tight hidden sm:block">BINGO ROYALE</span>
             </div>
-            <button onClick=${() => setView('home')} class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold px-4 py-2 rounded-xl transition-all duration-200 border border-slate-700">
-              Menú Principal
-            </button>
+
+            <div class="flex items-center gap-1 sm:gap-4">
+              <button onClick=${() => setView('home')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'home' ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 hover:text-white'}">Inicio</button>
+              <button onClick=${() => setView('player')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'player' ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 hover:text-white'}">Jugar</button>
+              ${(userRole === ROLES.ADMIN || userRole === ROLES.STAFF) && html`
+                <button onClick=${() => setView('staff')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'staff' ? 'text-emerald-500 bg-emerald-500/10' : 'text-slate-400 hover:text-white'}">Staff</button>
+              `}
+              ${userRole === ROLES.ADMIN && html`
+                <button onClick=${() => setView('admin')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'admin' ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-400 hover:text-white'}">Admin</button>
+              `}
+            </div>
           </div>
         </nav>
-      ` : null;
-
-      return html`
-        <div class="min-h-screen flex flex-col bg-slate-950 text-slate-50">
-          ${renderHeader()}
-          <main class="flex-1 flex flex-col">
-            ${view === 'home' ? html`<${HomeView} setView=${setView} userRole=${userRole} />` : null}
-            ${view === 'player' ? html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />` : null}
-            ${view === 'scanner' ? html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />` : null}
-            ${view === 'admin' ? html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${handleChangePattern} onResetGame=${handleResetGame} />` : null}
-            ${view === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} onExit=${() => setView('home')} />` : null}
-          </main>
-        </div>
       `;
     }
 
-    // --- VISTA: MENÚ PRINCIPAL INTERACTIVO ---
-    function HomeView({ setView, userRole }) {
+    function HomeView({ setView }) {
       return html`
-        <div class="flex-1 flex flex-col items-center justify-center p-6 text-center max-w-4xl mx-auto space-y-12">
-          <div class="space-y-4">
-            <div class="inline-flex p-3 bg-indigo-500/10 text-indigo-400 rounded-2xl border border-indigo-500/20 mb-2">
-              <span class="text-xs font-black uppercase tracking-widest">v3.0 Bingo Enterprise</span>
+        <div class="min-h-screen flex flex-col items-center justify-center px-6 pt-20">
+          <div class="text-center space-y-8 max-w-4xl fade-up">
+            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">
+              <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
+              The Gold Standard of Bingo
             </div>
-            <h1 class="text-6xl font-black tracking-tight bg-gradient-to-r from-white via-slate-200 to-slate-500 bg-clip-text text-transparent">
-              Bingo Pro Virtual
+            <h1 class="text-6xl md:text-8xl font-black tracking-tighter leading-none text-white">
+              Siente el Poder del <br/> <span class="bingo-title italic">Bingo Royale</span>
             </h1>
-            <p class="text-slate-400 text-lg max-w-xl mx-auto">
-              Plataforma Senior de gestión de sorteos. Rol detectado: <span class="text-indigo-400 font-bold uppercase">${userRole}</span>
+            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">
+              La plataforma más avanzada y elegante para la gestión de eventos de bingo en tiempo real. Diseñada para la excelencia.
             </p>
-          </div>
-
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
-            <button onClick=${() => setView('player')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-indigo-500/50 rounded-2xl transition-all duration-300 group text-left">
-              <div class="p-3 bg-indigo-500/10 text-indigo-400 rounded-xl group-hover:bg-indigo-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">01</div>
-              <span class="font-bold text-xl text-slate-100 mb-1">Módulo Jugador</span>
-              <span class="text-sm text-slate-400">Escoge tu cartón disponible y prepárate para jugar.</span>
-            </button>
             
-            ${(userRole === ROLES.SUPER_ADMIN || userRole === ROLES.COLLABORATOR) ? html`
-              <button onClick=${() => setView('scanner')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl transition-all duration-300 group text-left">
-                <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">02</div>
-                <span class="font-bold text-xl text-slate-100 mb-1">Validación</span>
-                <span class="text-sm text-slate-400">Autoriza jugadores y gestiona cambios de cartón.</span>
-              </button>
-            ` : null}
-
-            ${userRole === ROLES.SUPER_ADMIN ? html`
-              <button onClick=${() => setView('admin')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-2xl transition-all duration-300 group text-left">
-                <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl group-hover:bg-purple-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">03</div>
-                <span class="font-bold text-xl text-slate-100 mb-1">Super Admin</span>
-                <span class="text-sm text-slate-400">Configura eventos, pre-genera cartones y gestiona personal.</span>
-              </button>
-            ` : null}
-
-            <button onClick=${() => setView('display')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl transition-all duration-300 group text-left">
-              <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">04</div>
-              <span class="font-bold text-xl text-slate-100 mb-1">Pantalla Gigante</span>
-              <span class="text-sm text-slate-400">Visualización en tiempo real para el público.</span>
-            </button>
+            <div class="flex flex-wrap justify-center gap-6 pt-8">
+              <button onClick=${() => setView('player')} class="px-10 py-5 gold-gradient-bg text-deep-bg font-black rounded-2xl shadow-[0_20px_40px_rgba(212,175,55,0.3)] hover:scale-105 transition-all">EMPEZAR A JUGAR</button>
+              <button onClick=${() => setView('admin')} class="px-10 py-5 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl hover:bg-slate-800 transition-all">CONSOLA ADMIN</button>
+            </div>
           </div>
         </div>
       `;
     }
 
-    // --- VISTA: MÓDULO DEL JUGADOR ---
     function PlayerView({ activeEvent, cards, user, onReserveCard, onRequestChange }) {
       const [name, setName] = useState('');
       const [showChangeModal, setShowChangeModal] = useState(false);
@@ -488,36 +236,33 @@
       const myCard = useMemo(() => cards.find(c => c.playerId === user?.uid), [cards, user]);
       const availableCards = useMemo(() => cards.filter(c => c.status === 'available').sort((a,b) => a.cardNumber - b.cardNumber), [cards]);
 
-      if (!activeEvent) {
-        return html`
-          <div class="flex-1 flex flex-col items-center justify-center p-8 text-center">
-            <p class="text-slate-400 text-lg">No hay eventos de bingo activos en este momento.</p>
-          </div>
-        `;
-      }
+      if (!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase animate-pulse">Esperando Apertura de Mesa...</div>`;
 
       if (!myCard) {
         return html`
-          <div class="max-w-4xl w-full mx-auto p-6 space-y-8">
-            <div class="text-center space-y-2">
-              <h2 class="text-3xl font-black text-white">Escoge tu Cartón</h2>
-              <p class="text-slate-400">Introduce tu nombre y selecciona uno de los ${availableCards.length} cartones disponibles.</p>
+          <div class="min-h-screen pt-32 pb-20 px-6 max-w-7xl mx-auto space-y-16 fade-up">
+            <div class="text-center space-y-4">
+              <h2 class="text-5xl font-black text-white uppercase tracking-tighter">${activeEvent.name}</h2>
+              <p class="text-amber-500 font-black tracking-widest text-sm uppercase">Selecciona tu posición en la mesa</p>
             </div>
 
-            <div class="max-w-md mx-auto bg-slate-900 p-6 rounded-2xl border border-slate-800 mb-8">
-              <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Tu Nombre de Jugador</label>
-              <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="Ej. Juan Pérez" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white focus:border-indigo-500 outline-none" />
+            <div class="max-w-md mx-auto glass-card p-8 rounded-3xl space-y-6">
+              <div class="space-y-2">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tu Nombre de Jugador</label>
+                <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="EJ: CASINO ROYALE" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+              </div>
             </div>
 
-            <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-3">
+            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4">
               ${availableCards.map(card => html`
                 <button 
                   key=${card.id}
-                  onClick=${() => { if(!name.trim()) return alert('Ingresa tu nombre primero'); onReserveCard(card.id, name); }}
-                  class="aspect-square flex flex-col items-center justify-center bg-slate-900 border border-slate-800 rounded-xl hover:border-indigo-500 hover:bg-indigo-500/10 transition-all group"
+                  onClick=${() => { if(!name.trim()) return alert('Identifícate primero'); onReserveCard(card.id, name); }}
+                  class="aspect-[4/5] glass-card rounded-2xl flex flex-col items-center justify-center group hover:border-amber-500 transition-all duration-500"
                 >
-                  <span class="text-xs text-slate-500 group-hover:text-indigo-400 font-bold">#${card.cardNumber}</span>
-                  <span class="text-xl font-black text-slate-300 group-hover:text-white">ID</span>
+                  <span class="text-[8px] font-black text-slate-600 uppercase mb-1">Royale</span>
+                  <span class="text-3xl font-black text-slate-300 group-hover:text-amber-500 group-hover:scale-110 transition-all">${card.cardNumber}</span>
+                  <div class="mt-2 w-4 h-1 bg-slate-800 rounded-full group-hover:w-8 group-hover:bg-amber-500 transition-all"></div>
                 </button>
               `)}
             </div>
@@ -525,341 +270,219 @@
         `;
       }
 
-      const numbers = JSON.parse(myCard.numbers);
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${myCard.id}&color=15-23-42`;
+      const matrix = JSON.parse(myCard.numbers);
+      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${myCard.id}&color=05070a&bgcolor=ffffff`;
 
       return html`
-        <div class="max-w-xl w-full mx-auto p-4 space-y-8 pb-24">
-          <div class="flex justify-between items-center mt-4">
-            <h2 class="text-2xl font-black text-slate-100">Tu Juego</h2>
-            <button onClick=${() => setShowChangeModal(true)} class="text-xs font-bold bg-slate-800 hover:bg-slate-700 text-slate-400 px-4 py-2 rounded-xl border border-slate-700 transition">
-              Cambiar Cartón
-            </button>
+        <div class="min-h-screen pt-32 pb-24 px-6 flex flex-col items-center fade-up">
+          <div class="w-full max-w-xl space-y-8">
+            <div class="flex justify-between items-end px-2">
+              <div class="space-y-1">
+                <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Estado de Mesa</p>
+                <h2 class="text-3xl font-black text-white uppercase tracking-tighter">${myCard.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
+              </div>
+              <button onClick=${() => setShowChangeModal(true)} class="text-[10px] font-black text-slate-500 hover:text-rose-500 transition-colors uppercase tracking-widest mb-1">Solicitar Cambio</button>
+            </div>
+
+            ${myCard.status === 'reserved' ? html`
+              <div class="glass-card bg-white p-12 rounded-[3rem] text-center space-y-10 animate-in zoom-in duration-500">
+                <div class="space-y-3">
+                  <h3 class="text-4xl font-black text-slate-950 uppercase tracking-tighter">${myCard.playerName}</h3>
+                  <div class="inline-flex px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest">PASE DE ENTRADA #${myCard.cardNumber}</div>
+                </div>
+                <div class="p-8 bg-slate-50 rounded-[3rem] inline-block border-2 border-slate-100 shadow-inner">
+                  <img src=${qrUrl} class="w-64 h-64 mix-blend-multiply" />
+                </div>
+                <p class="text-slate-400 text-xs font-medium px-8 leading-relaxed">Presenta este código al personal del staff para activar tu cartón y comenzar el juego.</p>
+              </div>
+            ` : html`
+              <div class="bingo-grid-container shadow-2xl">
+                ${['B','I','N','G','O'].map(l => html`
+                  <div class="flex items-center justify-center text-2xl font-black text-amber-500/40 pb-2">${l}</div>
+                `)}
+                ${matrix.map(row => row.map(cell => {
+                  const isFree = cell === 'FREE';
+                  const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
+                  return html`
+                    <div class="bingo-cell ${isFree ? 'bingo-cell-free' : isDrawn ? 'bingo-cell-marked' : 'bingo-cell-empty'}">
+                      ${isFree ? '★' : cell}
+                    </div>
+                  `;
+                }))}
+              </div>
+              
+              <div class="flex justify-between items-center px-6 text-[9px] font-black text-slate-600 uppercase tracking-[0.3em]">
+                <span>SERIE: ${myCard.id.slice(-8)}</span>
+                <span>BINGO ROYALE v5.0</span>
+              </div>
+            `}
           </div>
 
-          ${myCard.status === 'reserved' ? html`
-            <div class="bg-white text-slate-900 rounded-3xl p-8 text-center shadow-2xl border border-slate-200">
-              <span class="inline-flex bg-amber-100 text-amber-900 font-black text-xs px-4 py-1.5 rounded-full uppercase tracking-wider mb-4">Esperando Autorización</span>
-              <h3 class="text-2xl font-bold mb-2">${myCard.playerName}</h3>
-              <p class="text-sm text-slate-500 max-w-xs mx-auto mb-6">Busca a un colaborador y muéstrale este QR para activar tu cartón #${myCard.cardNumber}.</p>
-              <div class="bg-slate-100 p-4 rounded-2xl inline-block border shadow-inner">
-                <img src=${qrUrl} alt="QR Authenticator" class="w-56 h-56 mx-auto" />
-              </div>
-              <p class="mt-4 text-xs font-mono text-slate-400">CARTÓN #${myCard.cardNumber}</p>
-            </div>
-          ` : html`
-            <div class="bg-slate-900 border-2 border-indigo-500/50 rounded-3xl overflow-hidden shadow-2xl">
-              <div class="bg-gradient-to-r from-indigo-900 to-slate-900 p-4 border-b border-slate-800 flex justify-between items-center">
-                <div>
-                  <p class="text-xs font-bold text-indigo-400 uppercase tracking-widest">Cartón #${myCard.cardNumber} Activo</p>
-                  <h3 class="text-lg font-bold text-white">${myCard.playerName}</h3>
+          ${showChangeModal && html`
+            <div class="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/60">
+              <div class="max-w-md w-full glass-card p-12 rounded-[3rem] space-y-8 fade-up border-rose-500/20">
+                <div class="text-center space-y-2">
+                  <h3 class="text-3xl font-black text-white uppercase tracking-tighter">CAMBIAR MESA</h3>
+                  <p class="text-slate-400 text-sm">Ingresa el código de autorización proporcionado por el staff.</p>
                 </div>
-                <div class="h-3 w-3 bg-emerald-500 rounded-full animate-pulse"></div>
-              </div>
-              <div class="p-4 bg-slate-950">
-                <div class="grid grid-cols-5 gap-2 mb-2 text-center">
-                  ${['B', 'I', 'N', 'G', 'O'].map(l => html`<div class="font-black text-xl text-indigo-400 py-2 bg-slate-900 rounded-xl border border-slate-800">${l}</div>`)}
-                </div>
-                <div class="grid grid-cols-5 gap-2">
-                  ${numbers.map((row) => row.map((cell) => {
-                    const isFree = cell === 'FREE';
-                    const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
-                    return html`
-                      <div class="aspect-square rounded-xl flex flex-col items-center justify-center text-xl font-bold border transition-all duration-200
-                        ${isFree ? 'bg-indigo-600 text-white border-indigo-500' : isDrawn ? 'bg-emerald-600 text-white border-emerald-500 scale-95 shadow-md' : 'bg-slate-900 text-slate-400 border-slate-800'}">
-                        ${isFree ? html`⭐` : cell}
-                      </div>
-                    `;
-                  }))}
+                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="000000" class="w-full bg-black/50 border border-slate-800 rounded-3xl p-6 text-center text-5xl font-black tracking-[0.4em] text-amber-500 outline-none focus:border-amber-500 transition-all" />
+                <div class="flex gap-4">
+                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-4 font-black text-slate-500 hover:text-white transition uppercase text-xs tracking-widest">Cerrar</button>
+                  <button onClick=${async () => { if(await onRequestChange(myCard.id, changeCode)) setShowChangeModal(false); }} class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg transition uppercase text-xs tracking-widest">Validar Cambio</button>
                 </div>
               </div>
             </div>
           `}
-
-          ${showChangeModal ? html`
-            <div class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-sm">
-              <div class="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
-                <h3 class="text-xl font-black text-white mb-2">Solicitar Cambio</h3>
-                <p class="text-sm text-slate-400 mb-6">Pide a un colaborador el código de cambio de 6 dígitos.</p>
-                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="CÓDIGO" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-4 text-center text-2xl font-black tracking-widest text-indigo-400 mb-6 outline-none focus:border-indigo-500" />
-                <div class="flex gap-3">
-                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-3 font-bold text-slate-400 hover:text-white transition">Cancelar</button>
-                  <button onClick=${async () => { const success = await onRequestChange(myCard.id, changeCode); if(success) setShowChangeModal(false); }} class="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Validar Cambio</button>
-                </div>
-              </div>
-            </div>
-          ` : null}
         </div>
       `;
     }
 
-    // --- VISTA: ESCÁNER QR REAL POR CÁMARA (RECEPCIÓN/ENTRADA) ---
-    function ScannerView({ user, onActivateCard }) {
-      const [log, setLog] = useState({ text: 'Esperando detección...', type: 'info' });
-      const [manualId, setManualId] = useState('');
-      const [myCollabData, setMyCollabData] = useState(null);
-      const [linkEmail, setLinkEmail] = useState('');
-
-      useEffect(() => {
-        const unsubscribe = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS), (snap) => {
-          const collab = snap.docs.find(doc => doc.data().uid === user.uid);
-          if (collab) setMyCollabData({ id: collab.id, ...collab.data() });
-        });
-        return () => unsubscribe();
-      }, [user]);
-
-      const handleLinkAccount = async () => {
-        const collabsRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS);
-        const q = query(collabsRef, where('email', '==', linkEmail.trim()));
-        const snap = await getDocs(q);
-        
-        if (snap.empty) return alert('Email no registrado como colaborador.');
-        
-        const collabDoc = snap.docs[0];
-        await updateDoc(collabDoc.ref, { uid: user.uid });
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS, user.uid), { role: ROLES.COLLABORATOR });
-        alert('Cuenta vinculada con éxito.');
-      };
-
-      useEffect(() => {
-        const html5QrcodeScanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 260 }, false);
-        async function onScanSuccess(decodedText) {
-          html5QrcodeScanner.clear();
-          setLog({ text: 'Procesando token...', type: 'info' });
-          const res = await onActivateCard(decodedText);
-          setLog({ text: res.msg, type: res.success ? 'success' : 'error' });
-          setTimeout(() => { html5QrcodeScanner.render(onScanSuccess, onScanError); }, 2500);
-        }
-        function onScanError(err) {}
-        html5QrcodeScanner.render(onScanSuccess, onScanError);
-        return () => { html5QrcodeScanner.clear().catch(e => {}); };
-      }, [onActivateCard]);
-
-      const handleManualSubmit = async (e) => {
-        e.preventDefault();
-        if(!manualId.trim()) return;
-        const res = await onActivateCard(manualId.trim());
-        setLog({ text: res.msg, type: res.success ? 'success' : 'error' });
-        if(res.success) setManualId('');
-      };
-
-      return html`
-        <div class="max-w-lg w-full mx-auto p-4 space-y-6 mt-6 pb-12">
-          ${myCollabData ? html`
-            <div class="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl">
-              <p class="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Tu Código de Cambio</p>
-              <h3 class="text-4xl font-black tracking-[0.5em]">${myCollabData.changeCode}</h3>
-              <p class="text-[10px] mt-4 opacity-70">Entrega este código al jugador si desea liberar su cartón actual.</p>
-            </div>
-          ` : html`
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-4">
-              <h3 class="text-xl font-black text-white">Vincular Colaborador</h3>
-              <p class="text-sm text-slate-400">Si eres un colaborador, ingresa tu email para activar tus permisos de validación.</p>
-              <input type="email" value=${linkEmail} onChange=${e => setLinkEmail(e.target.value)} placeholder="tu@email.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
-              <button onClick=${handleLinkAccount} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Vincular Mi UID</button>
-            </div>
-          `}
-
-          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl text-center">
-            <h2 class="text-2xl font-black text-slate-100 mb-1">Check-in Automático</h2>
-            <p class="text-sm text-slate-400 mb-6">Apunta el código QR del cliente hacia la cámara</p>
-            
-            <div id="qr-reader" class="overflow-hidden rounded-2xl border-2 border-slate-800 bg-slate-950 text-slate-900"></div>
-            
-            <div class="mt-6 p-4 rounded-xl font-bold text-sm border transition-all duration-300
-              ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : log.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/20' : 'bg-slate-950 text-slate-400 border-slate-800'}"
-            >
-              ${log.text}
-            </div>
-          </div>
-
-          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-            <h3 class="text-sm font-bold text-slate-300 mb-3 uppercase tracking-wider">Validación Manual de Respaldo</h3>
-            <form onSubmit=${handleManualSubmit} class="flex gap-2">
-              <input type="text" value=${manualId} onChange=${e => setManualId(e.target.value)} placeholder="Pegar identificador alfanumérico..." class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 text-sm font-mono focus:outline-none focus:border-indigo-500" />
-              <button type="submit" class="bg-slate-800 hover:bg-slate-700 border border-slate-700 px-4 rounded-xl font-bold text-sm transition">Validar</button>
-            </form>
-          </div>
-        </div>
-      `;
-    }
-
-    // --- VISTA: PANEL DE CONTROL DE ADMINISTRADOR ---
     function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame }) {
-      const [isProcessing, setIsProcessing] = useState(false);
       const [eventName, setEventName] = useState('');
       const [cardCount, setCardCount] = useState(100);
       const [collabEmail, setCollabEmail] = useState('');
       const [collabs, setCollabs] = useState([]);
+      const [isProcessing, setIsProcessing] = useState(false);
 
       useEffect(() => {
-        if (userRole === ROLES.SUPER_ADMIN) {
-          const unsubscribe = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS), (snap) => {
-            setCollabs(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+        if(userRole === ROLES.ADMIN) {
+          return onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), (s) => {
+            setCollabs(s.docs.map(d => ({id: d.id, ...d.data()})));
           });
-          return () => unsubscribe();
         }
       }, [userRole]);
 
-      const handleAddCollab = async () => {
-        if (!collabEmail.trim()) return;
-        const newRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_COLLABS));
-        await setDoc(newRef, {
+      const handleAddStaff = async () => {
+        if(!collabEmail.trim()) return;
+        const ref = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'));
+        await setDoc(ref, {
           email: collabEmail.trim(),
-          changeCode: BingoEngine.generateUniqueCode(),
+          code: Math.random().toString(36).substring(2, 8).toUpperCase(),
           createdAt: Date.now()
         });
         setCollabEmail('');
       };
 
-      if (!activeEvent && userRole === ROLES.SUPER_ADMIN) {
+      if (!activeEvent && userRole === ROLES.ADMIN) {
         return html`
-          <div class="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto text-center">
-            <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-xl space-y-6">
-              <h2 class="text-2xl font-black mb-2">Configurar Nuevo Evento</h2>
-              <div class="space-y-4 text-left">
-                <div>
-                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Nombre del Evento</label>
-                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="Bingo de Verano" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+          <div class="min-h-screen flex items-center justify-center px-6 pt-20">
+            <div class="max-w-md w-full glass-card p-12 rounded-[3rem] space-y-8 text-center fade-up">
+              <h2 class="text-4xl font-black text-white uppercase tracking-tighter italic">Nueva Gala</h2>
+              <div class="space-y-6 text-left">
+                <div class="space-y-2">
+                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Nombre del Evento</label>
+                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="BINGO NOCTURNO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
                 </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Cartones Únicos</label>
-                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+                <div class="space-y-2">
+                  <label class="text-[10px] font-black text-amber-500 uppercase tracking-widest ml-1">Cantidad de Cartones</label>
+                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
                 </div>
               </div>
-              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition shadow-lg">
-                CREAR Y PRE-GENERAR CARTONES
-              </button>
+              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition transform active:scale-95 uppercase tracking-widest text-sm">Inicializar Sistema</button>
             </div>
           </div>
         `;
       }
 
-      const lastNumber = (activeEvent && activeEvent.drawnNumbers && activeEvent.drawnNumbers.length > 0) 
-        ? activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] 
-        : '--';
+      if(!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase">Cargando Mesa Directiva...</div>`;
 
-      const stats = useMemo(() => {
-        if (!activeEvent || !activeEvent.id) return { active: 0, pending: 0 };
-        const eventCards = cards.filter(c => c.eventId === activeEvent.id);
-        return {
-          active: eventCards.filter(c => c.status === 'active').length,
-          pending: eventCards.filter(c => c.status === 'reserved').length
-        };
-      }, [cards, activeEvent]);
-
-      const handleDraw = async () => {
-        if (isProcessing || !activeEvent) return;
-        setIsProcessing(true);
-        try {
-          await onDrawNumber();
-        } catch (err) {
-          console.error("Draw error:", err);
-        } finally {
-          setIsProcessing(false);
-        }
+      const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] || '--';
+      const stats = {
+        active: cards.filter(c => c.status === 'active').length,
+        reserved: cards.filter(c => c.status === 'reserved').length,
+        available: cards.filter(c => c.status === 'available').length
       };
 
-      if (!activeEvent && userRole === ROLES.SUPER_ADMIN) {
-        return html`
-          <div class="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto text-center">
-            <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-xl space-y-6">
-              <h2 class="text-2xl font-black mb-2">Configurar Nuevo Evento</h2>
-              <div class="space-y-4 text-left">
-                <div>
-                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Nombre del Evento</label>
-                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="Bingo de Verano" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
-                </div>
-                <div>
-                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Cartones Únicos</label>
-                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
-                </div>
-              </div>
-              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition shadow-lg">
-                CREAR Y PRE-GENERAR CARTONES
-              </button>
-            </div>
-          </div>
-        `;
-      }
-
-      if (!activeEvent) return html`<div class="flex-1 flex items-center justify-center">Cargando consola...</div>`;
-
       return html`
-        <div class="max-w-5xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 pb-20">
-          <div class="md:col-span-2 space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col items-center shadow-xl">
-              <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Última Esfera Extraída</h3>
-              <div class="w-52 h-52 bg-gradient-to-br from-slate-900 to-indigo-950 rounded-full flex items-center justify-center shadow-2xl border-4 border-indigo-500/30 mb-8 relative">
-                <span class="text-8xl font-black text-white tracking-tighter">${lastNumber}</span>
-                <div class="absolute inset-0 rounded-full bg-indigo-500/5 animate-pulse"></div>
+        <div class="min-h-screen pt-32 pb-20 px-6 max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 fade-up">
+          <div class="lg:col-span-2 space-y-8">
+            <div class="glass-card p-12 rounded-[4rem] flex flex-col items-center space-y-12 relative overflow-hidden border-amber-500/30">
+              <div class="absolute top-0 right-0 p-10">
+                <div class="flex items-center gap-2 px-4 py-2 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 text-[10px] font-black uppercase tracking-widest">
+                  <span class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span> Live Console
+                </div>
               </div>
-              <button onClick=${handleDraw} disabled=${isProcessing || (activeEvent.drawnNumbers && activeEvent.drawnNumbers.length >= 75)} class="w-full max-w-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xl py-4 rounded-2xl shadow-lg transition tracking-wide">
-                ${isProcessing ? 'GENERANDO...' : 'SACAR BALOTA'}
+              
+              <div class="text-center space-y-4">
+                <p class="text-slate-500 font-black uppercase tracking-[0.4em] text-[10px]">Número Extraído</p>
+                <div class="w-72 h-72 rounded-full gold-gradient-bg p-1 shadow-[0_0_60px_rgba(212,175,55,0.3)]">
+                  <div class="w-full h-full rounded-full bg-slate-950 flex items-center justify-center border-8 border-white/5">
+                    <span class="text-[10rem] font-black tracking-tighter text-white leading-none">${lastNumber}</span>
+                  </div>
+                </div>
+              </div>
+
+              <button onClick=${async () => { setIsProcessing(true); await onDrawNumber(); setIsProcessing(false); }} disabled=${isProcessing || activeEvent.drawnNumbers.length >= 75} 
+                class="w-full max-w-md gold-gradient-bg text-deep-bg font-black text-2xl py-6 rounded-3xl shadow-2xl transition-all transform active:scale-95 hover:brightness-110">
+                ${isProcessing ? 'PROCESANDO...' : 'EXTRAER BALOTA'}
               </button>
             </div>
 
-            ${userRole === ROLES.SUPER_ADMIN ? html`
-              <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
-                <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Gestión de Colaboradores</h3>
-                <div class="flex gap-2">
-                  <input type="email" value=${collabEmail} onChange=${e => setCollabEmail(e.target.value)} placeholder="Email del colaborador" class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-white outline-none focus:border-indigo-500" />
-                  <button onClick=${handleAddCollab} class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-6 rounded-xl transition">Añadir</button>
+            ${userRole === ROLES.ADMIN && html`
+              <div class="glass-card p-10 rounded-[3rem] space-y-8">
+                <h3 class="text-2xl font-black text-white uppercase tracking-tighter flex items-center gap-4">
+                  <div class="w-2 h-10 bg-amber-500 rounded-full"></div> Gestión de Staff
+                </h3>
+                <div class="flex gap-4">
+                  <input type="email" value=${collabEmail} onChange=${e => setCollabEmail(e.target.value)} placeholder="EMAIL@ROYALE.COM" class="flex-1 bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500" />
+                  <button onClick=${handleAddStaff} class="bg-white text-black font-black px-10 rounded-2xl hover:bg-slate-200 transition-colors uppercase text-xs tracking-widest">Añadir</button>
                 </div>
-                <div class="space-y-3">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   ${collabs.map(c => html`
-                    <div key=${c.id} class="flex justify-between items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
-                      <div>
+                    <div key=${c.id} class="bg-black/40 p-6 rounded-[2rem] border border-slate-800 flex justify-between items-center group hover:border-amber-500/50 transition-colors">
+                      <div class="space-y-1">
                         <p class="text-white font-bold text-sm">${c.email}</p>
-                        <p class="text-xs text-slate-600">ID: ${c.id}</p>
+                        <p class="text-[8px] text-slate-500 font-black uppercase tracking-widest">Colaborador Oficial</p>
                       </div>
                       <div class="text-right">
-                        <p class="text-indigo-400 font-black text-lg tracking-widest">${c.changeCode}</p>
-                        <p class="text-[10px] text-slate-600 uppercase font-bold">Código de Cambio</p>
+                        <p class="text-amber-500 font-black text-2xl tracking-widest">${c.code}</p>
+                        <p class="text-[8px] text-slate-600 font-black uppercase">Auth Code</p>
                       </div>
                     </div>
                   `)}
                 </div>
               </div>
-            ` : null}
+            `}
           </div>
 
-          <div class="space-y-6">
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-              <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Enlace de Invitación</h3>
-              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-                <code class="text-xs text-indigo-400 truncate mr-4">${window.location.origin}${window.location.pathname}</code>
-                <button onClick=${() => { navigator.clipboard.writeText(window.location.href); alert('Copiado'); }} class="text-xs font-bold text-white bg-indigo-600 px-3 py-1 rounded-lg">Copiar</button>
-              </div>
-              <p class="text-[10px] text-slate-500 italic">Comparte este enlace con los jugadores para que escojan sus cartones.</p>
-            </div>
-
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-              <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4">Modalidad de Sorteo</h3>
+          <div class="space-y-8">
+            <div class="glass-card p-8 rounded-[2.5rem] space-y-8">
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Métricas de Gala</h3>
               <div class="space-y-4">
-                <div>
-                  <label class="block text-xs text-slate-400 font-bold mb-2 uppercase">Configurar Patrón de Victoria</label>
-                  <select value=${activeEvent.pattern} onChange=${e => { onChangePattern(e.target.value); VoiceService.speak(`Atención, configurado para jugar por ${BingoEngine.PATTERNS.find(p=>p.id===e.target.value).name}`); }} class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm font-medium text-slate-200 focus:outline-none focus:border-indigo-500">
-                    ${BingoEngine.PATTERNS.map(p => html`<option key=${p.id} value=${p.id}>${p.name}</option>`)}
-                  </select>
+                <div class="bg-black/40 p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
+                  <span class="text-slate-400 font-bold text-sm">En Mesa</span>
+                  <span class="text-3xl font-black text-emerald-500">${stats.active}</span>
                 </div>
-                <div class="pt-4 border-t border-slate-800">
-                  <button onClick=${handleResetGame} class="w-full bg-transparent hover:bg-rose-500/10 border border-rose-500/30 text-rose-400 font-bold py-2.5 rounded-xl text-sm transition">Reiniciar Bolillero</button>
+                <div class="bg-black/40 p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
+                  <span class="text-slate-400 font-bold text-sm">Esperando</span>
+                  <span class="text-3xl font-black text-amber-500">${stats.reserved}</span>
+                </div>
+                <div class="bg-black/40 p-6 rounded-2xl border border-slate-800 flex justify-between items-center">
+                  <span class="text-slate-400 font-bold text-sm">Disponibles</span>
+                  <span class="text-3xl font-black text-indigo-500">${stats.available}</span>
                 </div>
               </div>
             </div>
 
-            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl">
-              <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300 mb-4">Métricas del Evento</h3>
-              <div class="grid grid-cols-2 gap-4">
-                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <p class="text-xs text-slate-400 font-bold uppercase">Jugando</p>
-                  <p class="text-2xl font-black text-emerald-400">${stats.active}</p>
-                </div>
-                <div class="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                  <p class="text-xs text-slate-400 font-bold uppercase">Por Autorizar</p>
-                  <p class="text-2xl font-black text-amber-400">${stats.pending}</p>
-                </div>
+            <div class="glass-card p-8 rounded-[2.5rem] space-y-6">
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Configuración</h3>
+              <div class="space-y-4">
+                <label class="block text-[10px] font-black text-slate-600 uppercase tracking-widest ml-1">Modo de Victoria</label>
+                <select value=${activeEvent.pattern} onChange=${e => onChangePattern(e.target.value)} class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-black outline-none focus:border-amber-500 transition-all">
+                  <option value="full">🏆 CARTÓN LLENO</option>
+                  <option value="line">➖ LÍNEA RECTA</option>
+                  <option value="four_corners">💠 4 ESQUINAS</option>
+                  <option value="letter_x">❌ LETRA X</option>
+                </select>
+                <button onClick=${onResetGame} class="w-full py-4 text-rose-500 font-black text-[10px] uppercase tracking-[0.2em] hover:bg-rose-500/5 rounded-2xl transition-colors">Reiniciar Bolillero</button>
+              </div>
+            </div>
+
+            <div class="glass-card p-8 rounded-[2.5rem] space-y-4">
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Invitación Directa</h3>
+              <div class="bg-black/40 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+                <code class="text-[10px] text-indigo-400 truncate mr-4">${window.location.href}</code>
+                <button onClick=${() => {navigator.clipboard.writeText(window.location.href); alert('Copiado');}} class="bg-indigo-600/20 text-indigo-400 p-2 rounded-lg hover:bg-indigo-600 hover:text-white transition-all">📋</button>
               </div>
             </div>
           </div>
@@ -867,104 +490,213 @@
       `;
     }
 
-    // --- VISTA: PROYECTOR / PANTALLA GIGANTE AUTOMATIZADA ---
-    function DisplayView({ activeEvent, onExit }) {
-      if (!activeEvent) return html`<div class="fixed inset-0 bg-slate-950 flex items-center justify-center text-slate-400">Esperando Señal Base...</div>`;
+    function ScannerView({ user, onActivateCard }) {
+      const [log, setLog] = useState({ text: 'ESPERANDO TOKEN QR...', type: 'info' });
+      const [myStaffData, setMyStaffData] = useState(null);
+      const [emailLink, setEmailLink] = useState('');
 
-      const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] || null;
-      const currentPatternName = useMemo(() => BingoEngine.PATTERNS.find(p => p.id === activeEvent.pattern)?.name || 'Desconocido', [activeEvent.pattern]);
-
-      // Sistema de Locución Reactivo (Speech Dispatcher Hook)
       useEffect(() => {
-        if (lastNumber) {
-          let letter = '';
-          if (lastNumber <= 15) letter = 'B';
-          else if (lastNumber <= 30) letter = 'I';
-          else if (lastNumber <= 45) letter = 'N';
-          else if (lastNumber <= 60) letter = 'G';
-          else letter = 'O';
-          
-          VoiceService.speak(`¡${letter}! ¡${lastNumber}!`);
-        }
-      }, [lastNumber]);
+        return onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), (s) => {
+          const found = s.docs.find(d => d.data().uid === user.uid);
+          if(found) setMyStaffData({id: found.id, ...found.data()});
+        });
+      }, [user]);
 
-      const columnsConfig = [
-        { letter: 'B', min: 1, max: 15, style: 'text-blue-400 bg-blue-500/5 border-blue-500/20' },
-        { letter: 'I', min: 16, max: 30, style: 'text-rose-400 bg-rose-500/5 border-rose-500/20' },
-        { letter: 'N', min: 31, max: 45, style: 'text-purple-400 bg-purple-500/5 border-purple-500/20' },
-        { letter: 'G', min: 46, max: 60, style: 'text-emerald-400 bg-emerald-500/5 border-emerald-500/20' },
-        { letter: 'O', min: 61, max: 75, style: 'text-amber-400 bg-amber-500/5 border-amber-500/20' }
-      ];
+      const handleLink = async () => {
+        const q = query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('email', '==', emailLink.trim()));
+        const s = await getDocs(q);
+        if(s.empty) return alert('Este email no ha sido autorizado por la administración.');
+        await updateDoc(s.docs[0].ref, { uid: user.uid });
+        alert('Identidad de Staff vinculada.');
+      };
+
+      useEffect(() => {
+        const scanner = new Html5QrcodeScanner("qr-reader", { fps: 15, qrbox: 280 }, false);
+        scanner.render(async (text) => {
+          scanner.pause();
+          setLog({ text: 'VERIFICANDO CREDENCIAL...', type: 'info' });
+          const res = await onActivateCard(text);
+          setLog({ text: res.msg.toUpperCase(), type: res.success ? 'success' : 'error' });
+          setTimeout(() => scanner.resume(), 3000);
+        }, () => {});
+        return () => scanner.clear().catch(() => {});
+      }, []);
 
       return html`
-        <div class="fixed inset-0 bg-slate-950 flex flex-col z-50 text-white overflow-hidden">
-          <button onClick=${onExit} class="absolute top-4 right-4 text-xs font-bold text-slate-600 hover:text-slate-200 border border-slate-800 hover:border-slate-600 bg-slate-950 p-2 rounded-xl transition">Salir de Proyección</button>
-          
-          <div class="flex-none p-6 flex justify-between items-center bg-slate-900/40 border-b border-slate-900 shadow-xl backdrop-blur-md">
+        <div class="min-h-screen pt-32 pb-20 px-6 max-w-2xl mx-auto space-y-8 fade-up">
+          ${!myStaffData ? html`
+            <div class="glass-card p-12 rounded-[3rem] text-center space-y-8 border-amber-500/30">
+              <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic">Validación Staff</h3>
+              <p class="text-slate-400 text-sm">Vincula tu cuenta con el email autorizado por el Admin para acceder a las herramientas de validación.</p>
+              <input type="email" value=${emailLink} onChange=${e => setEmailLink(e.target.value)} placeholder="TU@ROYALE.COM" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500" />
+              <button onClick=${handleLink} class="w-full gold-gradient-bg text-deep-bg font-black py-5 rounded-2xl shadow-xl transition uppercase tracking-widest text-xs">Vincular Identidad</button>
+            </div>
+          ` : html`
+            <div class="gold-gradient-bg p-10 rounded-[3rem] text-deep-bg shadow-2xl space-y-2 relative overflow-hidden">
+              <div class="absolute top-4 right-6 text-[8px] font-black uppercase tracking-widest opacity-40 italic">Royale Staff Member</div>
+              <p class="text-[10px] font-black uppercase tracking-[0.4em] opacity-60">Código de Autorización de Mesa</p>
+              <h3 class="text-7xl font-black tracking-[0.5em] leading-none">${myStaffData.code}</h3>
+              <p class="text-[9px] font-bold mt-6 opacity-50 uppercase tracking-widest">Proporciona este código al jugador solo bajo supervisión.</p>
+            </div>
+          `}
+
+          <div class="glass-card p-10 rounded-[3rem] space-y-8 text-center border-emerald-500/20">
             <div class="space-y-1">
-              <h1 class="text-3xl font-black tracking-wider uppercase bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">${activeEvent.name}</h1>
-              <div class="text-lg font-bold text-slate-400 flex items-center">
-                <span>MODALIDAD DE JUEGO ACTUAL:</span>
-                <span class="text-indigo-400 ml-2 px-4 py-0.5 bg-indigo-500/10 border border-indigo-500/20 rounded-full">${currentPatternName}</span>
-              </div>
+              <h3 class="text-2xl font-black text-white uppercase tracking-tighter italic">Escáner de Recepción</h3>
+              <p class="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em]">Validación Biométrica de Cartones</p>
             </div>
             
-            <div class="flex items-center space-x-6 bg-slate-900 border border-slate-800 p-4 rounded-3xl shadow-inner">
-              <div class="text-right">
-                <p class="text-xs font-bold text-slate-500 uppercase tracking-widest">Última Balota</p>
-                <p class="text-sm font-mono text-indigo-400">Total: ${activeEvent.drawnNumbers.length}</p>
-              </div>
-              <div class="w-24 h-24 bg-indigo-600 rounded-full flex items-center justify-center shadow-[0_0_30px_rgba(79,70,229,0.4)] border-2 border-indigo-400">
-                <span class="text-5xl font-black text-white">${lastNumber || '--'}</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="flex-1 p-6 flex flex-col justify-center bg-slate-950">
-            <div class="w-full max-w-7xl mx-auto space-y-3">
-              ${columnsConfig.map(col => html`
-                <div key=${col.letter} class="flex items-stretch">
-                  <div class="w-20 flex items-center justify-center text-4xl font-black border rounded-l-2xl shadow-md ${col.style}">
-                    ${col.letter}
-                  </div>
-                  <div class="flex-1 grid grid-cols-[repeat(15,minmax(0,1fr))] gap-2 p-2 bg-slate-900/20 border-y border-r border-slate-900 rounded-r-2xl">
-                    ${Array.from({ length: 14 }, (_, i) => col.min + i).concat(col.max).map(num => {
-                      const isDrawn = activeEvent.drawnNumbers.includes(num);
-                      const isLast = num === lastNumber;
-                      
-                      return html`
-                        <div key=${num} class="aspect-square flex items-center justify-center rounded-xl text-xl font-extrabold transition-all duration-300 border
-                          ${isDrawn ? isLast ? 'bg-amber-400 text-slate-950 border-amber-300 font-black scale-110 shadow-[0_0_25px_rgba(251,191,36,0.6)] z-10 animate-pulse' : 'bg-indigo-600 text-white border-indigo-500 shadow-inner' : 'bg-slate-900/50 text-slate-700 border-slate-800/6.5'}"
-                        >
-                          ${num}
-                        </div>
-                      `;
-                    })}
-                  </div>
-                </div>
-              `)}
-            </div>
-          </div>
-
-          <div class="flex-none bg-slate-900/60 p-5 border-t border-slate-900 flex items-center">
-            <div class="max-w-7xl mx-auto w-full flex items-center space-x-4">
-              <span class="text-xs font-bold text-slate-500 uppercase tracking-widest">Cola de salida anterior:</span>
-              <div class="flex space-x-3">
-                ${[...activeEvent.drawnNumbers].slice(-6, -1).reverse().map((num, i) => html`
-                  <div key=${i} class="w-12 h-12 rounded-full bg-slate-900 border border-slate-800 flex items-center justify-center font-bold text-slate-400 text-lg shadow-inner">
-                    ${num}
-                  </div>
-                `)}
-              </div>
+            <div id="qr-reader" class="overflow-hidden rounded-[2.5rem] bg-black border-4 border-slate-900 shadow-inner"></div>
+            
+            <div class="p-5 rounded-2xl font-black text-xs uppercase tracking-[0.2em] transition-all duration-500 border
+              ${log.type === 'success' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/30' : 
+                log.type === 'error' ? 'bg-rose-500/10 text-rose-400 border-rose-500/30' : 
+                'bg-black/40 text-slate-500 border-slate-800'}">
+              ${log.text}
             </div>
           </div>
         </div>
       `;
     }
 
-    // Inicializar el Árbol del DOM nativamente
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(React.createElement(App));
+    // --- MAIN APP ---
+    function App() {
+      const [user, setUser] = useState(null);
+      const [userRole, setUserRole] = useState(ROLES.PLAYER);
+      const [view, setView] = useState('home');
+      const [events, setEvents] = useState([]);
+      const [cards, setCards] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (u) => {
+          if (!u) {
+            await signInAnonymously(auth);
+          } else {
+            setUser(u);
+            const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
+            const snap = await getDocs(usersRef);
+            if(snap.empty) {
+              await setDoc(doc(usersRef, u.uid), { role: ROLES.ADMIN });
+              setUserRole(ROLES.ADMIN);
+            } else {
+              const uSnap = await getDoc(doc(usersRef, u.uid));
+              if(uSnap.exists()) setUserRole(uSnap.data().role);
+              else {
+                const sSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
+                if(!sSnap.empty) setUserRole(ROLES.STAFF);
+              }
+            }
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+        const unsubEvents = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'), (s) => {
+          setEvents(s.docs.map(d => ({id: d.id, ...d.data()})));
+        });
+        const unsubCards = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'), (s) => {
+          setCards(s.docs.map(d => ({id: d.id, ...d.data()})));
+        });
+        return () => { unsubEvents(); unsubCards(); };
+      }, [user]);
+
+      const activeEvent = useMemo(() => events.find(e => e.status === 'active') || events[0], [events]);
+
+      const handleCreateEvent = async (name, count) => {
+        const batch = writeBatch(db);
+        const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
+        batch.set(eRef, {
+          name: name || 'Gala Bingo Royale',
+          status: 'active',
+          drawnNumbers: [],
+          pattern: 'full',
+          createdAt: Date.now()
+        });
+        for(let i=1; i<=count; i++) {
+          const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
+          batch.set(cRef, {
+            eventId: eRef.id,
+            cardNumber: i,
+            numbers: JSON.stringify(BingoEngine.generateCard()),
+            status: 'available',
+            playerId: null,
+            playerName: null,
+            createdAt: Date.now()
+          });
+        }
+        await batch.commit();
+      };
+
+      const handleReserveCard = async (cardId, name) => {
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), {
+          status: 'reserved',
+          playerId: user.uid,
+          playerName: name,
+          reservedAt: Date.now()
+        });
+      };
+
+      const handleDrawNumber = async () => {
+        const available = Array.from({length:75}, (_,i)=>i+1).filter(n => !activeEvent.drawnNumbers.includes(n));
+        if(available.length === 0) return;
+        const next = available[Math.floor(Math.random() * available.length)];
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+          drawnNumbers: [...activeEvent.drawnNumbers, next]
+        });
+      };
+
+      const handleRequestChange = async (cardId, code) => {
+        const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
+        if(s.empty) { alert('Código de Staff Inválido'); return false; }
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), {
+          status: 'available',
+          playerId: null,
+          playerName: null
+        });
+        return true;
+      };
+
+      const handleActivateCard = async (id) => {
+        const c = cards.find(x => x.id === id);
+        if(!c) return { success: false, msg: 'Error: Cartón no registrado' };
+        if(c.status === 'active') return { success: false, msg: 'Aviso: Ya está en juego' };
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', id), { status: 'active' });
+        return { success: true, msg: '¡Identidad Validada!' };
+      };
+
+      if (loading) return html`
+        <div class="min-h-screen flex flex-col items-center justify-center space-y-8 bg-black">
+          <div class="relative w-24 h-24">
+            <div class="absolute inset-0 border-4 border-amber-500/20 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <div class="text-center space-y-2">
+            <h1 class="bingo-title text-4xl">BINGO ROYALE</h1>
+            <p class="text-slate-600 text-[10px] font-black uppercase tracking-[0.5em]">Cargando Protocolos de Seguridad</p>
+          </div>
+        </div>
+      `;
+
+      return html`
+        <div class="min-h-screen bg-slate-950">
+          <${Navbar} setView=${setView} currentView=${view} userRole=${userRole} />
+          
+          <main class="transition-all duration-700">
+            ${view === 'home' ? html`<${HomeView} setView=${setView} />` : 
+              view === 'player' ? html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />` :
+              view === 'admin' ? html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} />` :
+              view === 'staff' ? html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />` :
+              null}
+          </main>
+        </div>
+      `;
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
   </script>
 </body>
 </html>
