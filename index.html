@@ -205,7 +205,7 @@
       const [cards, setCards] = useState([]);
       const [loading, setLoading] = useState(true);
 
-      // Auth Initialization con Manejo Senior de Errores
+      // Auth Initialization
       useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
           if (!currentUser) {
@@ -218,15 +218,12 @@
             setAuthError(null);
             setUser(currentUser);
             
-            // Cargar Rol del Usuario
             const userRef = doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS, currentUser.uid);
             const userSnap = await getDoc(userRef);
             
             if (userSnap.exists()) {
               setUserRole(userSnap.data().role);
             } else {
-              // Si es el primer usuario en entrar (Super Admin por defecto para desarrollo o Player)
-              // En un entorno real, esto se manejaría con una invitación o regla específica.
               const usersSnap = await getDocs(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_USERS));
               const role = usersSnap.empty ? ROLES.SUPER_ADMIN : ROLES.PLAYER;
               await setDoc(userRef, { role, createdAt: Date.now() });
@@ -237,7 +234,7 @@
         return () => unsubscribe();
       }, []);
 
-      // Real-time Data Synced with Firestore
+      // Real-time Data
       useEffect(() => {
         if (!user) return;
 
@@ -263,18 +260,21 @@
       }, [user]);
 
       const activeEvent = useMemo(() => events.find(e => e.status === 'active') || events[0] || null, [events]);
-      const myCards = useMemo(() => cards.filter(c => c.userId === user?.uid), [cards, user]);
 
-      // Acciones de Administrador (Eventos asíncronos transaccionales)
+      // Admin Actions
       const handleCreateEvent = async (name, totalCards) => {
         if (!user || userRole !== ROLES.SUPER_ADMIN) return;
         
+        const count = parseInt(totalCards);
+        if (isNaN(count) || count <= 0) return alert('Ingresa una cantidad válida.');
+        if (count > 450) return alert('Máximo 450 cartones por evento para garantizar estabilidad.');
+
         const batch = writeBatch(db);
         const eventRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_EVENTS));
         
         const eventData = {
-          name,
-          totalCards: parseInt(totalCards),
+          name: name || `Bingo - ${new Date().toLocaleDateString()}`,
+          totalCards: count,
           status: 'active',
           pattern: 'full',
           drawnNumbers: [],
@@ -284,15 +284,14 @@
         
         batch.set(eventRef, eventData);
         
-        // Pre-generar Cartones Únicos
-        for (let i = 0; i < totalCards; i++) {
+        for (let i = 0; i < count; i++) {
           const cardRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', PATH_CARDS));
           const matrix = BingoEngine.generateCard();
           batch.set(cardRef, {
             eventId: eventRef.id,
             cardNumber: i + 1,
             numbers: JSON.stringify(matrix),
-            status: 'available', // available, reserved, active
+            status: 'available',
             playerId: null,
             playerName: null,
             authBy: null,
@@ -300,7 +299,13 @@
           });
         }
         
-        await batch.commit();
+        try {
+          await batch.commit();
+          alert('Evento creado con éxito.');
+        } catch (err) {
+          console.error('Batch commit error:', err);
+          alert('Error al crear evento. Revisa la consola.');
+        }
       };
 
       const handleDrawNumber = async () => {
@@ -415,11 +420,11 @@
         <div class="min-h-screen flex flex-col bg-slate-950 text-slate-50">
           ${renderHeader()}
           <main class="flex-1 flex flex-col">
-            ${view === 'home' && html`<${HomeView} setView=${setView} userRole=${userRole} />`}
-            ${view === 'player' && html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />`}
-            ${view === 'scanner' && html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />`}
-            ${view === 'admin' && html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${handleChangePattern} onResetGame=${handleResetGame} />`}
-            ${view === 'display' && html`<${DisplayView} activeEvent=${activeEvent} onExit=${() => setView('home')} />`}
+            ${view === 'home' ? html`<${HomeView} setView=${setView} userRole=${userRole} />` : null}
+            ${view === 'player' ? html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />` : null}
+            ${view === 'scanner' ? html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />` : null}
+            ${view === 'admin' ? html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${handleChangePattern} onResetGame=${handleResetGame} />` : null}
+            ${view === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} onExit=${() => setView('home')} />` : null}
           </main>
         </div>
       `;
@@ -448,21 +453,21 @@
               <span class="text-sm text-slate-400">Escoge tu cartón disponible y prepárate para jugar.</span>
             </button>
             
-            ${(userRole === ROLES.SUPER_ADMIN || userRole === ROLES.COLLABORATOR) && html`
+            ${(userRole === ROLES.SUPER_ADMIN || userRole === ROLES.COLLABORATOR) ? html`
               <button onClick=${() => setView('scanner')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-emerald-500/50 rounded-2xl transition-all duration-300 group text-left">
                 <div class="p-3 bg-emerald-500/10 text-emerald-400 rounded-xl group-hover:bg-emerald-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">02</div>
                 <span class="font-bold text-xl text-slate-100 mb-1">Validación</span>
                 <span class="text-sm text-slate-400">Autoriza jugadores y gestiona cambios de cartón.</span>
               </button>
-            `}
+            ` : null}
 
-            ${userRole === ROLES.SUPER_ADMIN && html`
+            ${userRole === ROLES.SUPER_ADMIN ? html`
               <button onClick=${() => setView('admin')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-purple-500/50 rounded-2xl transition-all duration-300 group text-left">
                 <div class="p-3 bg-purple-500/10 text-purple-400 rounded-xl group-hover:bg-purple-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">03</div>
                 <span class="font-bold text-xl text-slate-100 mb-1">Super Admin</span>
                 <span class="text-sm text-slate-400">Configura eventos, pre-genera cartones y gestiona personal.</span>
               </button>
-            `}
+            ` : null}
 
             <button onClick=${() => setView('display')} class="flex flex-col items-start p-6 bg-slate-900 border border-slate-800 hover:border-amber-500/50 rounded-2xl transition-all duration-300 group text-left">
               <div class="p-3 bg-amber-500/10 text-amber-400 rounded-xl group-hover:bg-amber-500 group-hover:text-white transition-all duration-300 mb-4 font-bold">04</div>
@@ -571,7 +576,7 @@
             </div>
           `}
 
-          ${showChangeModal && html`
+          ${showChangeModal ? html`
             <div class="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-950/90 backdrop-blur-sm">
               <div class="max-w-sm w-full bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl">
                 <h3 class="text-xl font-black text-white mb-2">Solicitar Cambio</h3>
@@ -583,7 +588,7 @@
                 </div>
               </div>
             </div>
-          `}
+          ` : null}
         </div>
       `;
     }
@@ -640,18 +645,18 @@
 
       return html`
         <div class="max-w-lg w-full mx-auto p-4 space-y-6 mt-6 pb-12">
-          ${!myCollabData ? html`
+          ${myCollabData ? html`
+            <div class="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl">
+              <p class="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Tu Código de Cambio</p>
+              <h3 class="text-4xl font-black tracking-[0.5em]">${myCollabData.changeCode}</h3>
+              <p class="text-[10px] mt-4 opacity-70">Entrega este código al jugador si desea liberar su cartón actual.</p>
+            </div>
+          ` : html`
             <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-xl space-y-4">
               <h3 class="text-xl font-black text-white">Vincular Colaborador</h3>
               <p class="text-sm text-slate-400">Si eres un colaborador, ingresa tu email para activar tus permisos de validación.</p>
               <input type="email" value=${linkEmail} onChange=${e => setLinkEmail(e.target.value)} placeholder="tu@email.com" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
               <button onClick=${handleLinkAccount} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition">Vincular Mi UID</button>
-            </div>
-          ` : html`
-            <div class="bg-indigo-600 rounded-3xl p-6 text-white shadow-xl">
-              <p class="text-xs font-bold uppercase tracking-widest opacity-80 mb-1">Tu Código de Cambio</p>
-              <h3 class="text-4xl font-black tracking-[0.5em]">${myCollabData.changeCode}</h3>
-              <p class="text-[10px] mt-4 opacity-70">Entrega este código al jugador si desea liberar su cartón actual.</p>
             </div>
           `}
 
@@ -730,37 +735,71 @@
         `;
       }
 
-      const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] || '--';
+      const lastNumber = (activeEvent && activeEvent.drawnNumbers && activeEvent.drawnNumbers.length > 0) 
+        ? activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] 
+        : '--';
+
       const stats = useMemo(() => {
+        if (!activeEvent || !activeEvent.id) return { active: 0, pending: 0 };
+        const eventCards = cards.filter(c => c.eventId === activeEvent.id);
         return {
-          active: cards.filter(c => c.eventId === activeEvent.id && c.status === 'active').length,
-          pending: cards.filter(c => c.eventId === activeEvent.id && c.status === 'pending').length
+          active: eventCards.filter(c => c.status === 'active').length,
+          pending: eventCards.filter(c => c.status === 'reserved').length
         };
       }, [cards, activeEvent]);
 
       const handleDraw = async () => {
+        if (isProcessing || !activeEvent) return;
         setIsProcessing(true);
-        await onDrawNumber();
-        setIsProcessing(false);
+        try {
+          await onDrawNumber();
+        } catch (err) {
+          console.error("Draw error:", err);
+        } finally {
+          setIsProcessing(false);
+        }
       };
+
+      if (!activeEvent && userRole === ROLES.SUPER_ADMIN) {
+        return html`
+          <div class="flex-1 flex flex-col items-center justify-center p-8 max-w-md mx-auto text-center">
+            <div class="bg-slate-900 border border-slate-800 p-8 rounded-3xl shadow-xl space-y-6">
+              <h2 class="text-2xl font-black mb-2">Configurar Nuevo Evento</h2>
+              <div class="space-y-4 text-left">
+                <div>
+                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Nombre del Evento</label>
+                  <input type="text" value=${eventName} onChange=${e => setEventName(e.target.value)} placeholder="Bingo de Verano" class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold text-slate-400 uppercase mb-2">Cantidad de Cartones Únicos</label>
+                  <input type="number" value=${cardCount} onChange=${e => setCardCount(e.target.value)} class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-white outline-none focus:border-indigo-500" />
+                </div>
+              </div>
+              <button onClick=${() => onCreateEvent(eventName, cardCount)} class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-4 rounded-xl transition shadow-lg">
+                CREAR Y PRE-GENERAR CARTONES
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      if (!activeEvent) return html`<div class="flex-1 flex items-center justify-center">Cargando consola...</div>`;
 
       return html`
         <div class="max-w-5xl w-full mx-auto p-4 grid grid-cols-1 md:grid-cols-3 gap-6 mt-4 pb-20">
           <div class="md:col-span-2 space-y-6">
-            <!-- Panel de Sorteo (Existente) -->
             <div class="bg-slate-900 border border-slate-800 rounded-3xl p-8 flex flex-col items-center shadow-xl">
               <h3 class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-2">Última Esfera Extraída</h3>
               <div class="w-52 h-52 bg-gradient-to-br from-slate-900 to-indigo-950 rounded-full flex items-center justify-center shadow-2xl border-4 border-indigo-500/30 mb-8 relative">
                 <span class="text-8xl font-black text-white tracking-tighter">${lastNumber}</span>
                 <div class="absolute inset-0 rounded-full bg-indigo-500/5 animate-pulse"></div>
               </div>
-              <button onClick=${handleDraw} disabled=${isProcessing || activeEvent.drawnNumbers.length >= 75} class="w-full max-w-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xl py-4 rounded-2xl shadow-lg transition tracking-wide">
+              <button onClick=${handleDraw} disabled=${isProcessing || (activeEvent.drawnNumbers && activeEvent.drawnNumbers.length >= 75)} class="w-full max-w-sm bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 text-white font-black text-xl py-4 rounded-2xl shadow-lg transition tracking-wide">
                 ${isProcessing ? 'GENERANDO...' : 'SACAR BALOTA'}
               </button>
             </div>
 
-            <!-- Gestión de Colaboradores (Nuevo) -->
-            ${userRole === ROLES.SUPER_ADMIN && html`
+            ${userRole === ROLES.SUPER_ADMIN ? html`
               <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-6">
                 <h3 class="text-sm font-bold uppercase tracking-wider text-slate-300">Gestión de Colaboradores</h3>
                 <div class="flex gap-2">
@@ -772,7 +811,7 @@
                     <div key=${c.id} class="flex justify-between items-center bg-slate-950 p-4 rounded-xl border border-slate-800">
                       <div>
                         <p class="text-white font-bold text-sm">${c.email}</p>
-                        <p class="text-xs text-slate-500">ID: ${c.id}</p>
+                        <p class="text-xs text-slate-600">ID: ${c.id}</p>
                       </div>
                       <div class="text-right">
                         <p class="text-indigo-400 font-black text-lg tracking-widest">${c.changeCode}</p>
@@ -782,7 +821,7 @@
                   `)}
                 </div>
               </div>
-            `}
+            ` : null}
           </div>
 
           <div class="space-y-6">
