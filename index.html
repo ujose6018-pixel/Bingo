@@ -28,7 +28,6 @@
       overflow-x: hidden;
     }
 
-    /* Bingo Royale Theme Classes */
     .bingo-title {
       font-family: 'Bungee Shade', cursive;
       background: linear-gradient(to bottom, var(--gold-light), var(--gold), var(--gold-dark));
@@ -54,38 +53,41 @@
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 1.5rem;
-      border-radius: 0.75rem;
-      transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      border-radius: 0.5rem;
+      transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
       border: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 1.1rem;
     }
 
     .bingo-cell-empty {
-      background: rgba(255, 255, 255, 0.03);
-      color: rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.02);
+      color: rgba(255, 255, 255, 0.3);
     }
 
     .bingo-cell-marked {
       background: linear-gradient(135deg, var(--gold-light), var(--gold));
       color: var(--deep-bg);
-      transform: scale(0.95);
-      box-shadow: 0 0 20px rgba(212, 175, 55, 0.6), inset 0 0 10px rgba(255, 255, 255, 0.5);
+      box-shadow: 0 0 15px rgba(212, 175, 55, 0.5);
     }
 
     .bingo-cell-free {
       background: linear-gradient(135deg, #6366f1, #4338ca);
       color: white;
-      box-shadow: 0 0 20px rgba(99, 102, 241, 0.4);
     }
 
-    /* Custom Animations */
-    @keyframes pulse-gold {
-      0%, 100% { box-shadow: 0 0 20px rgba(212, 175, 55, 0.4); }
-      50% { box-shadow: 0 0 40px rgba(212, 175, 55, 0.7); }
+    .bingo-grid-mini {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 0.25rem;
+      padding: 0.75rem;
+      background: rgba(0,0,0,0.3);
+      border-radius: 1rem;
+      border: 1px solid rgba(212, 175, 55, 0.2);
     }
 
-    .active-number-glow {
-      animation: pulse-gold 2s infinite;
+    .bingo-grid-mini .bingo-cell {
+      font-size: 0.65rem;
+      border-radius: 0.25rem;
     }
 
     .fade-up {
@@ -97,35 +99,14 @@
       to { opacity: 1; transform: translateY(0); }
     }
 
-    /* Senior Responsive Grid */
-    .bingo-grid-container {
-      display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 0.75rem;
-      padding: 1.5rem;
-      background: var(--card-bg);
-      border-radius: 2rem;
-      border: 4px solid var(--gold);
-      position: relative;
-    }
-
-    .bingo-grid-container::before {
-      content: 'ROYALE';
-      position: absolute;
-      top: -12px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: var(--gold);
-      color: var(--deep-bg);
-      padding: 2px 16px;
-      font-size: 0.65rem;
-      font-weight: 900;
-      letter-spacing: 0.2em;
-      border-radius: 100px;
-    }
-
-    /* Utility */
     .no-scrollbar::-webkit-scrollbar { display: none; }
+    
+    /* Layout isolation */
+    .view-container {
+      min-h: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
   </style>
 </head>
 <body class="selection:bg-amber-500 selection:text-white">
@@ -162,6 +143,13 @@
 
     // --- UTILS ---
     const BingoEngine = {
+      getLetter: (num) => {
+        if (num <= 15) return 'B';
+        if (num <= 30) return 'I';
+        if (num <= 45) return 'N';
+        if (num <= 60) return 'G';
+        return 'O';
+      },
       generateCard: () => {
         const getCol = (min, max) => {
           const s = new Set();
@@ -176,54 +164,63 @@
       }
     };
 
+    // --- SENIOR ROUTING SYSTEM (CLEAN URL SUPPORT) ---
+    const useRouting = () => {
+      const [path, setPath] = useState(window.location.hash || '#/');
+
+      useEffect(() => {
+        const handleHashChange = () => setPath(window.location.hash || '#/');
+        window.addEventListener('hashchange', handleHashChange);
+        return () => window.removeEventListener('hashchange', handleHashChange);
+      }, []);
+
+      const navigate = (to) => {
+        window.location.hash = to;
+      };
+
+      const getCleanBaseUrl = () => {
+        // Elimina index.html de la URL base para que sea limpia: dominio.com/#/ruta
+        return window.location.origin + window.location.pathname.replace('index.html', '');
+      };
+
+      const routeInfo = useMemo(() => {
+        const cleanPath = path.replace('#', '');
+        const segments = cleanPath.split('/').filter(Boolean);
+        
+        if (segments[0] === 'admin') return { type: 'admin' };
+        if (segments[0] === 'staff') return { type: 'staff' };
+        if (segments.length > 0) return { type: 'player', eventSlug: segments[0] };
+        return { type: 'home' };
+      }, [path]);
+
+      return { ...routeInfo, navigate, getCleanBaseUrl };
+    };
+
     // --- UI COMPONENTS ---
 
-    function Navbar({ setView, currentView, userRole }) {
+    function MiniCard({ card, onReserve, playerName }) {
+      const matrix = JSON.parse(card.numbers);
       return html`
-        <nav class="fixed top-0 inset-x-0 z-[100] px-6 py-4">
-          <div class="max-w-7xl mx-auto glass-card rounded-2xl px-6 py-3 flex justify-between items-center border-amber-500/10">
-            <div class="flex items-center gap-3 cursor-pointer group" onClick=${() => setView('home')}>
-              <div class="w-10 h-10 gold-gradient-bg rounded-xl flex items-center justify-center shadow-lg group-hover:rotate-12 transition-transform">
-                <span class="text-xl">👑</span>
+        <div class="glass-card p-4 rounded-2xl space-y-4 hover:border-amber-500/50 transition-all group fade-up">
+          <div class="flex justify-between items-center">
+            <span class="text-[10px] font-black text-amber-500 uppercase tracking-widest">Cartón #${card.cardNumber}</span>
+            <div class="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+          </div>
+          
+          <div class="bingo-grid-mini">
+            ${['B','I','N','G','O'].map(l => html`
+              <div class="flex items-center justify-center text-[10px] font-black text-amber-500/40 pb-1 border-b border-amber-500/10">${l}</div>
+            `)}
+            ${matrix.map(row => row.map(cell => html`
+              <div class="bingo-cell ${cell === 'FREE' ? 'bingo-cell-free' : 'bingo-cell-empty'}">
+                ${cell === 'FREE' ? '★' : cell}
               </div>
-              <span class="bingo-title text-xl font-black tracking-tight hidden sm:block">BINGO ROYALE</span>
-            </div>
-
-            <div class="flex items-center gap-1 sm:gap-4">
-              <button onClick=${() => setView('home')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'home' ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 hover:text-white'}">Inicio</button>
-              <button onClick=${() => setView('player')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'player' ? 'text-amber-500 bg-amber-500/10' : 'text-slate-400 hover:text-white'}">Jugar</button>
-              ${(userRole === ROLES.ADMIN || userRole === ROLES.STAFF) && html`
-                <button onClick=${() => setView('staff')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'staff' ? 'text-emerald-500 bg-emerald-500/10' : 'text-slate-400 hover:text-white'}">Staff</button>
-              `}
-              ${userRole === ROLES.ADMIN && html`
-                <button onClick=${() => setView('admin')} class="px-4 py-2 rounded-xl text-xs font-black uppercase tracking-widest transition ${currentView === 'admin' ? 'text-indigo-500 bg-indigo-500/10' : 'text-slate-400 hover:text-white'}">Admin</button>
-              `}
-            </div>
+            `))}
           </div>
-        </nav>
-      `;
-    }
 
-    function HomeView({ setView }) {
-      return html`
-        <div class="min-h-screen flex flex-col items-center justify-center px-6 pt-20">
-          <div class="text-center space-y-8 max-w-4xl fade-up">
-            <div class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">
-              <span class="w-2 h-2 rounded-full bg-amber-500 animate-pulse"></span>
-              The Gold Standard of Bingo
-            </div>
-            <h1 class="text-6xl md:text-8xl font-black tracking-tighter leading-none text-white">
-              Siente el Poder del <br/> <span class="bingo-title italic">Bingo Royale</span>
-            </h1>
-            <p class="text-slate-400 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed">
-              La plataforma más avanzada y elegante para la gestión de eventos de bingo en tiempo real. Diseñada para la excelencia.
-            </p>
-            
-            <div class="flex flex-wrap justify-center gap-6 pt-8">
-              <button onClick=${() => setView('player')} class="px-10 py-5 gold-gradient-bg text-deep-bg font-black rounded-2xl shadow-[0_20px_40px_rgba(212,175,55,0.3)] hover:scale-105 transition-all">EMPEZAR A JUGAR</button>
-              <button onClick=${() => setView('admin')} class="px-10 py-5 bg-slate-900 border border-slate-800 text-white font-black rounded-2xl hover:bg-slate-800 transition-all">CONSOLA ADMIN</button>
-            </div>
-          </div>
+          <button onClick=${() => onReserve(card.id, playerName)} class="w-full py-2 bg-white/5 hover:bg-white text-white hover:text-black text-[10px] font-black uppercase tracking-widest rounded-lg transition-all">
+            Reservar Este
+          </button>
         </div>
       `;
     }
@@ -233,102 +230,134 @@
       const [showChangeModal, setShowChangeModal] = useState(false);
       const [changeCode, setChangeCode] = useState('');
 
-      const myCard = useMemo(() => cards.find(c => c.playerId === user?.uid), [cards, user]);
+      const myCards = useMemo(() => cards.filter(c => c.playerId === user?.uid), [cards, user]);
       const availableCards = useMemo(() => cards.filter(c => c.status === 'available').sort((a,b) => a.cardNumber - b.cardNumber), [cards]);
 
-      if (!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase animate-pulse">Esperando Apertura de Mesa...</div>`;
+      if (!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase animate-pulse">Esperando Apertura de Mesa Royale...</div>`;
 
-      if (!myCard) {
+      if (myCards.length === 0) {
         return html`
-          <div class="min-h-screen pt-32 pb-20 px-6 max-w-7xl mx-auto space-y-16 fade-up">
+          <div class="view-container pt-24 pb-20 px-6 max-w-7xl mx-auto space-y-12">
             <div class="text-center space-y-4">
-              <h2 class="text-5xl font-black text-white uppercase tracking-tighter">${activeEvent.name}</h2>
-              <p class="text-amber-500 font-black tracking-widest text-sm uppercase">Selecciona tu posición en la mesa</p>
-            </div>
-
-            <div class="max-w-md mx-auto glass-card p-8 rounded-3xl space-y-6">
-              <div class="space-y-2">
-                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Tu Nombre de Jugador</label>
-                <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="EJ: CASINO ROYALE" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-4 text-white font-bold outline-none focus:border-amber-500 transition-all" />
+              <h2 class="text-6xl font-black text-white uppercase tracking-tighter italic">${activeEvent.name}</h2>
+              <div class="inline-flex items-center gap-3 px-6 py-2 rounded-full bg-amber-500/10 border border-amber-500/20">
+                <span class="text-amber-500 font-black tracking-widest text-[10px] uppercase">Gala Privada en Curso</span>
               </div>
             </div>
 
-            <div class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 xl:grid-cols-10 gap-4">
-              ${availableCards.map(card => html`
-                <button 
-                  key=${card.id}
-                  onClick=${() => { if(!name.trim()) return alert('Identifícate primero'); onReserveCard(card.id, name); }}
-                  class="aspect-[4/5] glass-card rounded-2xl flex flex-col items-center justify-center group hover:border-amber-500 transition-all duration-500"
-                >
-                  <span class="text-[8px] font-black text-slate-600 uppercase mb-1">Royale</span>
-                  <span class="text-3xl font-black text-slate-300 group-hover:text-amber-500 group-hover:scale-110 transition-all">${card.cardNumber}</span>
-                  <div class="mt-2 w-4 h-1 bg-slate-800 rounded-full group-hover:w-8 group-hover:bg-amber-500 transition-all"></div>
-                </button>
-              `)}
+            <div class="max-w-md mx-auto glass-card p-8 rounded-[2.5rem] space-y-6">
+              <div class="space-y-2 text-center">
+                <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest ml-1">Identificación del Invitado</label>
+                <input type="text" value=${name} onChange=${e => setName(e.target.value)} placeholder="NOMBRE COMPLETO" class="w-full bg-black/40 border border-slate-800 rounded-2xl p-5 text-center text-white font-black outline-none focus:border-amber-500 transition-all uppercase tracking-widest" />
+                <p class="text-[9px] text-slate-600 italic">Escribe tu nombre para habilitar la selección de mesa.</p>
+              </div>
             </div>
+
+            ${name.trim().length > 3 ? html`
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                ${availableCards.map(card => html`<${MiniCard} key=${card.id} card=${card} onReserve=${onReserveCard} playerName=${name} />`)}
+              </div>
+            ` : html`
+              <div class="text-center py-20 border-2 border-dashed border-slate-800 rounded-[3rem]">
+                <p class="text-slate-700 font-black uppercase tracking-[0.3em]">Introduce tu nombre para ver los cartones</p>
+              </div>
+            `}
           </div>
         `;
       }
 
-      const matrix = JSON.parse(myCard.numbers);
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${myCard.id}&color=05070a&bgcolor=ffffff`;
-
       return html`
-        <div class="min-h-screen pt-32 pb-24 px-6 flex flex-col items-center fade-up">
-          <div class="w-full max-w-xl space-y-8">
-            <div class="flex justify-between items-end px-2">
-              <div class="space-y-1">
-                <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Estado de Mesa</p>
-                <h2 class="text-3xl font-black text-white uppercase tracking-tighter">${myCard.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
-              </div>
-              <button onClick=${() => setShowChangeModal(true)} class="text-[10px] font-black text-slate-500 hover:text-rose-500 transition-colors uppercase tracking-widest mb-1">Solicitar Cambio</button>
-            </div>
-
-            ${myCard.status === 'reserved' ? html`
-              <div class="glass-card bg-white p-12 rounded-[3rem] text-center space-y-10 animate-in zoom-in duration-500">
-                <div class="space-y-3">
-                  <h3 class="text-4xl font-black text-slate-950 uppercase tracking-tighter">${myCard.playerName}</h3>
-                  <div class="inline-flex px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest">PASE DE ENTRADA #${myCard.cardNumber}</div>
-                </div>
-                <div class="p-8 bg-slate-50 rounded-[3rem] inline-block border-2 border-slate-100 shadow-inner">
-                  <img src=${qrUrl} class="w-64 h-64 mix-blend-multiply" />
-                </div>
-                <p class="text-slate-400 text-xs font-medium px-8 leading-relaxed">Presenta este código al personal del staff para activar tu cartón y comenzar el juego.</p>
-              </div>
-            ` : html`
-              <div class="bingo-grid-container shadow-2xl">
-                ${['B','I','N','G','O'].map(l => html`
-                  <div class="flex items-center justify-center text-2xl font-black text-amber-500/40 pb-2">${l}</div>
-                `)}
-                ${matrix.map(row => row.map(cell => {
-                  const isFree = cell === 'FREE';
-                  const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
-                  return html`
-                    <div class="bingo-cell ${isFree ? 'bingo-cell-free' : isDrawn ? 'bingo-cell-marked' : 'bingo-cell-empty'}">
-                      ${isFree ? '★' : cell}
-                    </div>
-                  `;
-                }))}
-              </div>
+        <div class="view-container pt-24 pb-24 px-6 flex flex-col items-center fade-up">
+          <div class="w-full max-w-2xl space-y-10">
+            ${myCards.map(card => {
+              const matrix = JSON.parse(card.numbers);
+              const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=400x400&data=${card.id}&color=05070a&bgcolor=ffffff`;
               
-              <div class="flex justify-between items-center px-6 text-[9px] font-black text-slate-600 uppercase tracking-[0.3em]">
-                <span>SERIE: ${myCard.id.slice(-8)}</span>
-                <span>BINGO ROYALE v5.0</span>
-              </div>
-            `}
+              return html`
+                <div key=${card.id} class="space-y-6">
+                  <div class="flex justify-between items-end px-4">
+                    <div class="space-y-1">
+                      <p class="text-amber-500 text-[10px] font-black uppercase tracking-[0.3em]">Mesa Royale #${card.cardNumber}</p>
+                      <h2 class="text-4xl font-black text-white uppercase tracking-tighter">${card.status === 'active' ? 'EN JUEGO' : 'POR VALIDAR'}</h2>
+                    </div>
+                    <button onClick=${() => setShowChangeModal(true)} class="text-[10px] font-black text-slate-600 hover:text-rose-500 transition-colors uppercase tracking-widest">Abandonar Mesa</button>
+                  </div>
+
+                  ${card.status === 'reserved' ? html`
+                    <div class="glass-card bg-white p-12 rounded-[3.5rem] text-center space-y-10 animate-in zoom-in duration-500">
+                      <div class="space-y-3">
+                        <h3 class="text-4xl font-black text-slate-950 uppercase tracking-tighter">${card.playerName}</h3>
+                        <div class="inline-flex px-4 py-1.5 rounded-full bg-amber-100 text-amber-700 text-[10px] font-black uppercase tracking-widest">PASE DE ENTRADA VIP</div>
+                      </div>
+                      <div class="p-8 bg-slate-50 rounded-[3rem] inline-block border-2 border-slate-100 shadow-inner">
+                        <img src=${qrUrl} class="w-64 h-64 mix-blend-multiply" />
+                      </div>
+                      <p class="text-slate-400 text-xs font-medium px-8 leading-relaxed italic">Presenta este código al personal de staff para autorizar tu participación.</p>
+                    </div>
+                  ` : html`
+                    <div class="p-8 rounded-[3.5rem] border-4 border-amber-500 bg-slate-900 shadow-2xl space-y-8 relative overflow-hidden">
+                      <div class="absolute -top-10 -right-10 w-40 h-40 bg-amber-500/10 rounded-full blur-3xl"></div>
+                      
+                      <div class="flex justify-between items-center relative z-10">
+                        <span class="bingo-title text-3xl font-black italic">BINGO</span>
+                        <div class="text-right">
+                          <p class="text-amber-500 font-black text-[9px] uppercase tracking-widest">Titular</p>
+                          <p class="text-white font-black text-xl uppercase tracking-tighter">${card.playerName}</p>
+                        </div>
+                      </div>
+
+                  <div class="grid grid-cols-5 gap-3 relative z-10">
+                    ${['B','I','N','G','O'].map(l => html`
+                      <div class="aspect-square flex items-center justify-center text-2xl font-black text-amber-500/40">${l}</div>
+                    `)}
+                    ${matrix.map(row => row.map((cell, cellIdx) => {
+                      const isFree = cell === 'FREE';
+                      const isDrawn = !isFree && activeEvent.drawnNumbers.includes(cell);
+                      
+                      // Solo permitir marcar si el número ya fue sorteado
+                      const toggleMark = (e) => {
+                        if (!isDrawn && !isFree) {
+                          const letter = ['B','I','N','G','O'][cellIdx];
+                          VoiceService.speak(`El número ${letter} ${cell} aún no ha sido sorteado`, 1);
+                          return;
+                        }
+                        e.target.classList.toggle('bingo-cell-marked');
+                        e.target.classList.toggle('active-number-glow');
+                      };
+
+                      return html`
+                        <div 
+                          onClick=${toggleMark}
+                          class="bingo-cell cursor-pointer ${isFree ? 'bingo-cell-free bingo-cell-marked active-number-glow' : 'bingo-cell-empty'}"
+                        >
+                          ${isFree ? '★' : cell}
+                        </div>
+                      `;
+                    }))}
+                  </div>
+
+                      <div class="flex justify-between items-center pt-4 border-t border-slate-800 text-[8px] font-black text-slate-600 tracking-[0.4em] uppercase relative z-10">
+                        <span>ROYALE SECURE: ${card.id.slice(-12).toUpperCase()}</span>
+                        <span>V5.2 FINAL</span>
+                      </div>
+                    </div>
+                  `}
+                </div>
+              `;
+            })}
           </div>
 
           ${showChangeModal && html`
-            <div class="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/60">
-              <div class="max-w-md w-full glass-card p-12 rounded-[3rem] space-y-8 fade-up border-rose-500/20">
+            <div class="fixed inset-0 z-[200] flex items-center justify-center p-6 backdrop-blur-2xl bg-black/80">
+              <div class="max-w-md w-full glass-card p-12 rounded-[3.5rem] space-y-8 fade-up border-rose-500/20">
                 <div class="text-center space-y-2">
-                  <h3 class="text-3xl font-black text-white uppercase tracking-tighter">CAMBIAR MESA</h3>
-                  <p class="text-slate-400 text-sm">Ingresa el código de autorización proporcionado por el staff.</p>
+                  <h3 class="text-3xl font-black text-white uppercase tracking-tighter italic text-rose-500">Autorizar Salida</h3>
+                  <p class="text-slate-400 text-sm">Pide al staff el código de liberación para volver a la selección de cartones.</p>
                 </div>
-                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="000000" class="w-full bg-black/50 border border-slate-800 rounded-3xl p-6 text-center text-5xl font-black tracking-[0.4em] text-amber-500 outline-none focus:border-amber-500 transition-all" />
+                <input type="text" value=${changeCode} onChange=${e => setChangeCode(e.target.value.toUpperCase())} placeholder="000000" class="w-full bg-black/60 border border-slate-800 rounded-3xl p-6 text-center text-5xl font-black tracking-[0.5em] text-amber-500 outline-none focus:border-amber-500 transition-all" />
                 <div class="flex gap-4">
-                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-4 font-black text-slate-500 hover:text-white transition uppercase text-xs tracking-widest">Cerrar</button>
-                  <button onClick=${async () => { if(await onRequestChange(myCard.id, changeCode)) setShowChangeModal(false); }} class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg transition uppercase text-xs tracking-widest">Validar Cambio</button>
+                  <button onClick=${() => setShowChangeModal(false)} class="flex-1 py-4 font-black text-slate-500 hover:text-white transition uppercase text-[10px] tracking-widest">Cerrar</button>
+                  <button onClick=${async () => { if(await onRequestChange(myCards[0].id, changeCode)) setShowChangeModal(false); }} class="flex-1 bg-rose-600 hover:bg-rose-700 text-white font-black py-4 rounded-2xl shadow-lg transition uppercase text-[10px] tracking-widest">Liberar Cartón</button>
                 </div>
               </div>
             </div>
@@ -337,12 +366,179 @@
       `;
     }
 
-    function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame }) {
+    // --- VOICE SERVICE ---
+    const VoiceService = {
+      speak: (text, count = 1) => {
+        if (!('speechSynthesis' in window)) return;
+        window.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'es-ES';
+        utterance.rate = 0.9;
+        
+        let repeated = 0;
+        utterance.onend = () => {
+          repeated++;
+          if (repeated < count) {
+            setTimeout(() => {
+              window.speechSynthesis.speak(utterance);
+            }, 500);
+          }
+        };
+        
+        window.speechSynthesis.speak(utterance);
+      }
+    };
+
+    // --- MAIN APP ---
+    function App() {
+      const { type, eventSlug, navigate, getCleanBaseUrl } = useRouting();
+      const [user, setUser] = useState(null);
+      const [userRole, setUserRole] = useState(ROLES.PLAYER);
+      const [events, setEvents] = useState([]);
+      const [cards, setCards] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        const unsubscribe = onAuthStateChanged(auth, async (u) => {
+          if (!u) {
+            await signInAnonymously(auth);
+          } else {
+            setUser(u);
+            const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
+            const snap = await getDocs(usersRef);
+            if(snap.empty) {
+              await setDoc(doc(usersRef, u.uid), { role: ROLES.ADMIN });
+              setUserRole(ROLES.ADMIN);
+            } else {
+              const uSnap = await getDoc(doc(usersRef, u.uid));
+              if(uSnap.exists()) setUserRole(uSnap.data().role);
+              else {
+                const sSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
+                if(!sSnap.empty) setUserRole(ROLES.STAFF);
+              }
+            }
+            setLoading(false);
+          }
+        });
+        return () => unsubscribe();
+      }, []);
+
+      useEffect(() => {
+        if (!user) return;
+        const unsubEvents = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'), (s) => {
+          setEvents(s.docs.map(d => ({id: d.id, slug: d.data().name.toLowerCase().replace(/ /g, '-'), ...d.data()})));
+        });
+        const unsubCards = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'), (s) => {
+          setCards(s.docs.map(d => ({id: d.id, ...d.data()})));
+        });
+        return () => { unsubEvents(); unsubCards(); };
+      }, [user]);
+
+      const activeEvent = useMemo(() => {
+        if (eventSlug) return events.find(e => e.slug === eventSlug);
+        return events.find(e => e.status === 'active') || events[0];
+      }, [events, eventSlug]);
+
+      // Actions
+      const handleCreateEvent = async (name, count) => {
+        const batch = writeBatch(db);
+        const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
+        batch.set(eRef, { name: name || 'Gala Bingo Royale', status: 'active', drawnNumbers: [], pattern: 'full', createdAt: Date.now() });
+        for(let i=1; i<=count; i++) {
+          const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
+          batch.set(cRef, { eventId: eRef.id, cardNumber: i, numbers: JSON.stringify(BingoEngine.generateCard()), status: 'available', playerId: null, playerName: null, createdAt: Date.now() });
+        }
+        await batch.commit();
+        alert('Evento Creado. Comparte el enlace del jugador.');
+      };
+
+      const handleReserveCard = async (cardId, name) => {
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'reserved', playerId: user.uid, playerName: name, reservedAt: Date.now() });
+      };
+
+      const handleRequestChange = async (cardId, code) => {
+        const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
+        if(s.empty) { alert('Código de Staff Inválido'); return false; }
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), { status: 'available', playerId: null, playerName: null });
+        return true;
+      };
+
+      const handleActivateCard = async (id) => {
+        const c = cards.find(x => x.id === id);
+        if(!c) return { success: false, msg: 'Error: Cartón no registrado' };
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', id), { status: 'active' });
+        return { success: true, msg: '¡Acceso Concedido!' };
+      };
+
+      const handleDrawNumber = async () => {
+        const available = Array.from({length:75}, (_,i)=>i+1).filter(n => !activeEvent.drawnNumbers.includes(n));
+        if(available.length === 0) return;
+        const next = available[Math.floor(Math.random() * available.length)];
+        const letter = BingoEngine.getLetter(next);
+        
+        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
+          drawnNumbers: [...activeEvent.drawnNumbers, next]
+        });
+        
+        VoiceService.speak(`${letter}, ${next}`, 3);
+      };
+
+      if (loading) return html`
+        <div class="min-h-screen flex flex-col items-center justify-center space-y-8 bg-black">
+          <div class="relative w-24 h-24">
+            <div class="absolute inset-0 border-4 border-amber-500/10 rounded-full"></div>
+            <div class="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+          </div>
+          <div class="text-center space-y-2">
+            <h1 class="bingo-title text-4xl italic">BINGO ROYALE</h1>
+            <p class="text-slate-700 text-[9px] font-black uppercase tracking-[0.6em]">Protocolo de Alta Seguridad</p>
+          </div>
+        </div>
+      `;
+
+      // SENIOR INTERFACE ISOLATION
+      if (type === 'admin') {
+        if (userRole !== ROLES.ADMIN) return html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO: NIVEL ADMIN REQUERIDO</div>`;
+        return html`
+          <div class="view-container">
+            <${Navbar} setView=${(v) => navigate('/' + v)} currentView="admin" userRole=${userRole} />
+            <${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} getCleanBaseUrl=${getCleanBaseUrl} />
+          </div>
+        `;
+      }
+
+      if (type === 'staff') {
+        if (userRole !== ROLES.ADMIN && userRole !== ROLES.STAFF) return html`<div class="min-h-screen flex items-center justify-center text-rose-500 font-black">ACCESO DENEGADO: NIVEL STAFF REQUERIDO</div>`;
+        return html`
+          <div class="view-container">
+            <${Navbar} setView=${(v) => navigate('/' + v)} currentView="staff" userRole=${userRole} />
+            <${ScannerView} user=${user} onActivateCard=${handleActivateCard} />
+          </div>
+        `;
+      }
+
+      // PLAYER INTERFACE (Default & Event Slug)
+      return html`
+        <div class="view-container">
+          <${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />
+        </div>
+      `;
+    }
+
+    // --- PLACEHOLDER COMPONENTS FOR ISOLATION ---
+
+    function AdminView({ userRole, activeEvent, cards, onCreateEvent, onDrawNumber, onChangePattern, onResetGame, getCleanBaseUrl }) {
       const [eventName, setEventName] = useState('');
       const [cardCount, setCardCount] = useState(100);
       const [collabEmail, setCollabEmail] = useState('');
       const [collabs, setCollabs] = useState([]);
       const [isProcessing, setIsProcessing] = useState(false);
+
+      const invitationUrl = useMemo(() => {
+        if (!activeEvent) return '';
+        return `${getCleanBaseUrl()}#/${activeEvent.slug}`;
+      }, [activeEvent, getCleanBaseUrl]);
 
       useEffect(() => {
         if(userRole === ROLES.ADMIN) {
@@ -366,7 +562,7 @@
       if (!activeEvent && userRole === ROLES.ADMIN) {
         return html`
           <div class="min-h-screen flex items-center justify-center px-6 pt-20">
-            <div class="max-w-md w-full glass-card p-12 rounded-[3rem] space-y-8 text-center fade-up">
+            <div class="max-w-md w-full glass-card p-12 rounded-[3rem] gold-border space-y-8 text-center fade-up">
               <h2 class="text-4xl font-black text-white uppercase tracking-tighter italic">Nueva Gala</h2>
               <div class="space-y-6 text-left">
                 <div class="space-y-2">
@@ -386,7 +582,9 @@
 
       if(!activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-slate-500 font-black tracking-widest uppercase">Cargando Mesa Directiva...</div>`;
 
-      const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] || '--';
+      const lastNumber = (activeEvent.drawnNumbers && activeEvent.drawnNumbers.length > 0) ? activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1] : null;
+      const lastLetter = lastNumber ? BingoEngine.getLetter(lastNumber) : '';
+      
       const stats = {
         active: cards.filter(c => c.status === 'active').length,
         reserved: cards.filter(c => c.status === 'reserved').length,
@@ -407,12 +605,12 @@
                 <p class="text-slate-500 font-black uppercase tracking-[0.4em] text-[10px]">Número Extraído</p>
                 <div class="w-72 h-72 rounded-full gold-gradient-bg p-1 shadow-[0_0_60px_rgba(212,175,55,0.3)]">
                   <div class="w-full h-full rounded-full bg-slate-950 flex items-center justify-center border-8 border-white/5">
-                    <span class="text-[10rem] font-black tracking-tighter text-white leading-none">${lastNumber}</span>
+                    <span class="text-[8rem] font-black tracking-tighter text-white leading-none">${lastLetter}${lastNumber || '--'}</span>
                   </div>
                 </div>
               </div>
 
-              <button onClick=${async () => { setIsProcessing(true); await onDrawNumber(); setIsProcessing(false); }} disabled=${isProcessing || activeEvent.drawnNumbers.length >= 75} 
+              <button onClick=${async () => { setIsProcessing(true); await onDrawNumber(); setIsProcessing(false); }} disabled=${isProcessing || (activeEvent.drawnNumbers && activeEvent.drawnNumbers.length >= 75)} 
                 class="w-full max-w-md gold-gradient-bg text-deep-bg font-black text-2xl py-6 rounded-3xl shadow-2xl transition-all transform active:scale-95 hover:brightness-110">
                 ${isProcessing ? 'PROCESANDO...' : 'EXTRAER BALOTA'}
               </button>
@@ -479,10 +677,10 @@
             </div>
 
             <div class="glass-card p-8 rounded-[2.5rem] space-y-4">
-              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Invitación Directa</h3>
+              <h3 class="text-[10px] font-black text-slate-500 uppercase tracking-[0.3em]">Enlace Invitación</h3>
               <div class="bg-black/40 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
-                <code class="text-[10px] text-indigo-400 truncate mr-4">${window.location.href}</code>
-                <button onClick=${() => {navigator.clipboard.writeText(window.location.href); alert('Copiado');}} class="bg-indigo-600/20 text-indigo-400 p-2 rounded-lg hover:bg-indigo-600 hover:text-white transition-all">📋</button>
+                <code class="text-[10px] text-indigo-400 truncate mr-4">${invitationUrl}</code>
+                <button onClick=${() => {navigator.clipboard.writeText(invitationUrl); alert('Enlace VIP Copiado');}} class="bg-indigo-600/20 text-indigo-400 p-2 rounded-lg hover:bg-indigo-600 hover:text-white transition-all">📋</button>
               </div>
             </div>
           </div>
@@ -555,143 +753,6 @@
               ${log.text}
             </div>
           </div>
-        </div>
-      `;
-    }
-
-    // --- MAIN APP ---
-    function App() {
-      const [user, setUser] = useState(null);
-      const [userRole, setUserRole] = useState(ROLES.PLAYER);
-      const [view, setView] = useState('home');
-      const [events, setEvents] = useState([]);
-      const [cards, setCards] = useState([]);
-      const [loading, setLoading] = useState(true);
-
-      useEffect(() => {
-        const unsubscribe = onAuthStateChanged(auth, async (u) => {
-          if (!u) {
-            await signInAnonymously(auth);
-          } else {
-            setUser(u);
-            const usersRef = collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users');
-            const snap = await getDocs(usersRef);
-            if(snap.empty) {
-              await setDoc(doc(usersRef, u.uid), { role: ROLES.ADMIN });
-              setUserRole(ROLES.ADMIN);
-            } else {
-              const uSnap = await getDoc(doc(usersRef, u.uid));
-              if(uSnap.exists()) setUserRole(uSnap.data().role);
-              else {
-                const sSnap = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('uid', '==', u.uid)));
-                if(!sSnap.empty) setUserRole(ROLES.STAFF);
-              }
-            }
-            setLoading(false);
-          }
-        });
-        return () => unsubscribe();
-      }, []);
-
-      useEffect(() => {
-        if (!user) return;
-        const unsubEvents = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'), (s) => {
-          setEvents(s.docs.map(d => ({id: d.id, ...d.data()})));
-        });
-        const unsubCards = onSnapshot(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'), (s) => {
-          setCards(s.docs.map(d => ({id: d.id, ...d.data()})));
-        });
-        return () => { unsubEvents(); unsubCards(); };
-      }, [user]);
-
-      const activeEvent = useMemo(() => events.find(e => e.status === 'active') || events[0], [events]);
-
-      const handleCreateEvent = async (name, count) => {
-        const batch = writeBatch(db);
-        const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
-        batch.set(eRef, {
-          name: name || 'Gala Bingo Royale',
-          status: 'active',
-          drawnNumbers: [],
-          pattern: 'full',
-          createdAt: Date.now()
-        });
-        for(let i=1; i<=count; i++) {
-          const cRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards'));
-          batch.set(cRef, {
-            eventId: eRef.id,
-            cardNumber: i,
-            numbers: JSON.stringify(BingoEngine.generateCard()),
-            status: 'available',
-            playerId: null,
-            playerName: null,
-            createdAt: Date.now()
-          });
-        }
-        await batch.commit();
-      };
-
-      const handleReserveCard = async (cardId, name) => {
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), {
-          status: 'reserved',
-          playerId: user.uid,
-          playerName: name,
-          reservedAt: Date.now()
-        });
-      };
-
-      const handleDrawNumber = async () => {
-        const available = Array.from({length:75}, (_,i)=>i+1).filter(n => !activeEvent.drawnNumbers.includes(n));
-        if(available.length === 0) return;
-        const next = available[Math.floor(Math.random() * available.length)];
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {
-          drawnNumbers: [...activeEvent.drawnNumbers, next]
-        });
-      };
-
-      const handleRequestChange = async (cardId, code) => {
-        const s = await getDocs(query(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'staff'), where('code', '==', code)));
-        if(s.empty) { alert('Código de Staff Inválido'); return false; }
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', cardId), {
-          status: 'available',
-          playerId: null,
-          playerName: null
-        });
-        return true;
-      };
-
-      const handleActivateCard = async (id) => {
-        const c = cards.find(x => x.id === id);
-        if(!c) return { success: false, msg: 'Error: Cartón no registrado' };
-        if(c.status === 'active') return { success: false, msg: 'Aviso: Ya está en juego' };
-        await updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'cards', id), { status: 'active' });
-        return { success: true, msg: '¡Identidad Validada!' };
-      };
-
-      if (loading) return html`
-        <div class="min-h-screen flex flex-col items-center justify-center space-y-8 bg-black">
-          <div class="relative w-24 h-24">
-            <div class="absolute inset-0 border-4 border-amber-500/20 rounded-full"></div>
-            <div class="absolute inset-0 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-          </div>
-          <div class="text-center space-y-2">
-            <h1 class="bingo-title text-4xl">BINGO ROYALE</h1>
-            <p class="text-slate-600 text-[10px] font-black uppercase tracking-[0.5em]">Cargando Protocolos de Seguridad</p>
-          </div>
-        </div>
-      `;
-
-      return html`
-        <div class="min-h-screen bg-slate-950">
-          <${Navbar} setView=${setView} currentView=${view} userRole=${userRole} />
-          
-          <main class="transition-all duration-700">
-            ${view === 'home' ? html`<${HomeView} setView=${setView} />` : 
-              view === 'player' ? html`<${PlayerView} activeEvent=${activeEvent} cards=${cards} user=${user} onReserveCard=${handleReserveCard} onRequestChange=${handleRequestChange} />` :
-              view === 'admin' ? html`<${AdminView} userRole=${userRole} activeEvent=${activeEvent} cards=${cards} onCreateEvent=${handleCreateEvent} onDrawNumber=${handleDrawNumber} onChangePattern=${(p) => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {pattern:p})} onResetGame=${() => updateDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', activeEvent.id), {drawnNumbers:[]})} />` :
-              view === 'staff' ? html`<${ScannerView} user=${user} onActivateCard=${handleActivateCard} />` :
-              null}
-          </main>
         </div>
       `;
     }
