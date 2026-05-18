@@ -869,7 +869,7 @@
       `;
     }
 
-    function DisplayView({ activeEvent }) {
+    function DisplayView({ activeEvent, BingoEngine }) {
       if (!activeEvent) return html`<div class="min-h-screen bg-black flex items-center justify-center text-amber-500 font-black tracking-[0.5em] animate-pulse">CARGANDO TRANSMISIÓN ROYALE...</div>`;
 
       const lastNumber = activeEvent.drawnNumbers[activeEvent.drawnNumbers.length - 1];
@@ -1090,7 +1090,7 @@
       `;
     }
 
-    function SharedCardView({ cardId, cards, activeEvent }) {
+    function SharedCardView({ cardId, cards, activeEvent, drawnNumbersSet }) {
       const card = useMemo(() => cards.find(c => c.id === cardId), [cards, cardId]);
       
       if (!card || !activeEvent) return html`<div class="min-h-screen flex items-center justify-center text-amber-500 font-black tracking-widest animate-pulse">CARGANDO CARTÓN COMPARTIDO...</div>`;
@@ -1346,8 +1346,8 @@
             </div>
           `}
 
-          ${type === 'shared_card' ? html`<${SharedCardView} cardId=${routeInfo.cardId} cards=${cards} activeEvent=${activeEvent} />` : null}
-          ${type === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} />` : null}
+          ${type === 'shared_card' ? html`<${SharedCardView} cardId=${routeInfo.cardId} cards=${cards} activeEvent=${activeEvent} drawnNumbersSet=${drawnNumbersSet} />` : null}
+          ${type === 'display' ? html`<${DisplayView} activeEvent=${activeEvent} BingoEngine=${BingoEngine} />` : null}
           ${type === 'admin' ? (
             userRole !== ROLES.ADMIN ? html`<${AdminStaffLogin} onLogin=${handleSystemLogin} type="admin" />` : 
             html`
