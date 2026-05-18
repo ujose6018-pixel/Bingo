@@ -184,6 +184,15 @@
         if (num <= 60) return 'G';
         return 'O';
       },
+      slugify: (text) => {
+        return text.toString().toLowerCase().trim()
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Remove accents
+          .replace(/\s+/g, '-')           // Replace spaces with -
+          .replace(/[^\w\-]+/g, '')       // Remove all non-word chars
+          .replace(/\-\-+/g, '-')         // Replace multiple - with single -
+          .replace(/^-+/, '')             // Trim - from start
+          .replace(/-+$/, '');            // Trim - from end
+      },
       generateCard: () => {
         const getCol = (min, max) => {
           const s = new Set();
@@ -397,7 +406,20 @@
 
     // --- SENIOR ROUTING SYSTEM (CLEAN URL SUPPORT) ---
     const useRouting = () => {
-      const [path, setPath] = useState(window.location.hash || '#/');
+      const getInitialPath = useCallback(() => {
+        // Soporte para #/slug y /slug (si el servidor lo permite)
+        const hash = window.location.hash;
+        if (hash) return hash;
+        
+        const path = window.location.pathname;
+        // Si hay un path que no sea index.html o raíz, tratarlo como slug
+        if (path && path !== '/' && !path.endsWith('index.html')) {
+          return '#' + path;
+        }
+        return '#/';
+      }, []);
+
+      const [path, setPath] = useState(getInitialPath());
 
       useEffect(() => {
         const handleHashChange = () => setPath(window.location.hash || '#/');
@@ -609,8 +631,16 @@
                     <!-- CARTON GRANDE -->
                     <${BingoCard} 
                       card=${card} 
-                      drawnNumbersSet=${new Set(activeEvent.drawnNumbers)} 
+                      drawnNumbersSet=${drawnNumbersSet} 
                       onToggleMark=${async (cell) => {
+                        const isFree = cell === 'FREE';
+                        
+                        // RESTRICCIÓN SENIOR: Solo permitir marcar si el número ha salido en la tómbola
+                        if (!isFree && !drawnNumbersSet.has(Number(cell))) {
+                          VoiceService.speak(`Ese número todavía no ha salido`, 1);
+                          return;
+                        }
+
                         const newMarkTimes = { ...markTimes };
                         if (newMarkTimes[cell]) delete newMarkTimes[cell];
                         else {
@@ -1079,9 +1109,17 @@
 
           <${BingoCard} 
             card=${card} 
-            drawnNumbersSet=${new Set(activeEvent.drawnNumbers)} 
+            drawnNumbersSet=${drawnNumbersSet} 
             onToggleMark=${async (cell) => {
               if (card.status !== 'active') return;
+              const isFree = cell === 'FREE';
+
+              // RESTRICCIÓN SENIOR: Solo permitir marcar si el número ha salido en la tómbola
+              if (!isFree && !drawnNumbersSet.has(Number(cell))) {
+                VoiceService.speak(`No ha salido`, 1);
+                return;
+              }
+
               const newMarkTimes = { ...markTimes };
               if (newMarkTimes[cell]) delete newMarkTimes[cell];
               else {
@@ -1174,9 +1212,10 @@
           batch.update(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events', e.id), { status: 'finished', finishedAt: Date.now() });
         });
 
+        const eventNameFinal = name || 'Gala Bingo Royale';
         const eRef = doc(collection(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'events'));
         batch.set(eRef, { 
-          name: name || 'Gala Bingo Royale', 
+          name: eventNameFinal, 
           status: 'active', 
           drawnNumbers: [], 
           pattern: 'full', 
@@ -1185,7 +1224,7 @@
           winnersHistory: [], // Native array
           tempChangeCodes: [], // Native array
           createdAt: Date.now(),
-          slug: Math.random().toString(36).substring(2, 8)
+          slug: BingoEngine.slugify(eventNameFinal)
         });
 
         cards.forEach(c => {
@@ -1216,8 +1255,9 @@
         }
 
         await batch.commit();
-        alert('Gala Reiniciada.');
-      }, [events, cards]);
+        alert(`Gala "${eventNameFinal}" Iniciada.\n\nEnlace de Invitación: ${getCleanBaseUrl()}#/${BingoEngine.slugify(eventNameFinal)}`);
+        navigate('/' + BingoEngine.slugify(eventNameFinal));
+      }, [events, cards, navigate, getCleanBaseUrl]);
 
       const handleReserveCard = useCallback(async (cardId, name) => {
         const userSnap = await getDoc(doc(db, 'artifacts', APP_NAMESPACE, 'public', 'data', 'users', user.uid));
